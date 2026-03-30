@@ -17,6 +17,20 @@ class Subscription extends Model
     protected $primaryKey = 'subscription_id';
 
     /**
+     * Indicates if the IDs are auto-incrementing.
+     *
+     * @var bool
+     */
+    public $incrementing = true;
+
+    /**
+     * The "type" of the primary key ID.
+     *
+     * @var string
+     */
+    protected $keyType = 'int';
+
+    /**
      * The attributes that are mass assignable.
      *
      * @var array<int, string>
@@ -30,9 +44,10 @@ class Subscription extends Model
     /**
      * The attributes that should be cast.
      *
-     * @var array
+     * @var array<string, string>
      */
     protected $casts = [
-        'total_viewers' => 'integer',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
     ];
 }

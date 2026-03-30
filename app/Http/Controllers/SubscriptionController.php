@@ -157,15 +157,15 @@ class SubscriptionController extends Controller
      * @return \Illuminate\Http\JsonResponse
      */
     public function allsubscriptions(): JsonResponse
-    {
-        try {
-            // Fetch all subscriptions, ordering by the category name alphabetically
-            $subscriptions = Subscription::orderBy('category', 'asc')->get();
-            
-            return response()->json(['data' => $subscriptions], 200);
-        } catch (\Exception $e) {
-            Log::error('Error fetching all subscriptions: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to retrieve subscriptions'], 500);
-        }
+{
+    try {
+        // Fetch all subscriptions ordered by subscription_id
+        $subscriptions = Subscription::orderBy('subscription_id', 'asc')->get();
+        
+        return response()->json(['data' => $subscriptions], 200);
+    } catch (\Exception $e) {
+        Log::error('Error fetching all subscriptions: ' . $e->getMessage());
+        return response()->json(['error' => 'Failed to retrieve subscriptions'], 500);
     }
+}
 }

@@ -93,7 +93,7 @@ public function allEvents()
     {
         try {
             $latestEvent = Event::select($this->getSelectableFields())
-                ->orderBy('created_at', 'asc')
+                ->orderBy('event_id', 'asc')
                 ->first();
 
             if (!$latestEvent) {

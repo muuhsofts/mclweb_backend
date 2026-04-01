@@ -87,7 +87,7 @@ public function allEvents()
     }
 
     /**
-     * Display the latest event record based on created_at.
+     * Display the latest event record 
      */
     public function latestEvent()
     {

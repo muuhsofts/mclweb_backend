@@ -41,6 +41,7 @@ use App\Http\Controllers\API\SubcategoryWeDoController;
 use App\Http\Controllers\BlogController;
 use App\Http\Controllers\SubBlogController;
 use App\Http\Controllers\BenefitiesHomeController;
+use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\BenefitsController;
 use App\Http\Controllers\ValuesHomeController;
 use App\Http\Controllers\ValuesController;
@@ -127,6 +128,7 @@ Route::get('/leadershipHomeSlider', [LeadershipHomeController::class, 'leadershi
         Route::get('/readmore-news/{news_id}', [NewsController::class, 'newsByid']);
        
 
+        Route::get('/fetch-all-galleries', [GalleryController::class, 'fetchAllGallery']);
        
 // Protected Routes
 Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
@@ -158,6 +160,19 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
     Route::post('/companies/{company_id}', [CompanyController::class, 'update']); 
     Route::delete('/companies/{company_id}', [CompanyController::class, 'destroy']);
 
+    //Gallery route
+     Route::post('/galleries', [GalleryController::class, 'store']);
+
+    // use POST if you use form-data (file upload)
+    Route::post('/galleries/{id}', [GalleryController::class, 'update']);
+
+    // OR if using PUT (no file issues)
+    // Route::put('/galleries/{id}', [GalleryController::class, 'update']);
+
+    Route::delete('/galleries/{id}', [GalleryController::class, 'destroy']);
+
+    Route::get('/galleries', [GalleryController::class, 'index']);
+Route::get('/galleries/{id}', [GalleryController::class, 'show']);
 
     
 

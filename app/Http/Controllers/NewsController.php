@@ -335,4 +335,59 @@ class NewsController extends Controller
             return response()->json(['error' => 'Failed to delete news record.'], 500);
         }
     }
+
+    /**
+ * Get news by category (public).
+ */
+public function getByCategory($category)
+{
+    try {
+        $news = News::select(
+            'news_id', 'category', 'description', 'news_img', 'pdf_file',
+            'read_more_url_lnk', 'images', 'read_more_links', 'created_at', 'updated_at'
+        )
+        ->where('category', $category)
+        ->orderBy('news_id', 'desc')
+        ->get();
+
+        if ($news->isEmpty()) {
+            return response()->json(['message' => 'No news found for this category'], 404);
+        }
+
+        return response()->json(['news' => $news], 200);
+    } catch (Exception $e) {
+        Log::error('Error fetching news by category: ' . $e->getMessage());
+        return response()->json(['error' => 'Failed to fetch news by category.'], 500);
+    }
+}
+
+/**
+ * Get all gallery images from all news records (public).
+ * Returns a unique list of image URLs.
+ */
+public function getAllImages()
+{
+    try {
+        // Fetch all news records and extract images
+        $allNews = News::select('images')->get();
+        $allImages = [];
+
+        foreach ($allNews as $news) {
+            if (!empty($news->images) && is_array($news->images)) {
+                foreach ($news->images as $path) {
+                    $allImages[] = asset($path);
+                }
+            }
+        }
+
+        // Remove duplicates and re-index
+        $uniqueImages = array_unique($allImages);
+        $uniqueImages = array_values($uniqueImages);
+
+        return response()->json(['images' => $uniqueImages], 200);
+    } catch (Exception $e) {
+        Log::error('Error fetching all images: ' . $e->getMessage());
+        return response()->json(['error' => 'Failed to fetch images.'], 500);
+    }
+}
 }

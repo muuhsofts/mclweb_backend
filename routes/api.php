@@ -126,6 +126,8 @@ Route::get('/allsubscriptions', [SubscriptionController::class, 'allsubscription
 Route::get('/latestbrand', [BrandController::class, 'latestbrand']);
 Route::get('/readmore-news/{news_id}', [NewsController::class, 'newsByid']);
 Route::get('/fetch-all-galleries', [GalleryController::class, 'fetchAllGallery']);
+Route::get('/news/category/{category}', [NewsController::class, 'getByCategory']);
+Route::get('/news/images/all', [NewsController::class, 'getAllImages']);
 
 // Protected Routes (require authentication)
 Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {

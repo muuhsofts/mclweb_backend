@@ -89,7 +89,27 @@ class EventController extends Controller
         }
     }
 
-  
+   public function latestEvent()
+{
+    try {
+        $latest = Event::select($this->getSelectableFields())
+            ->where(function ($query) {
+                $query->whereNotNull('img_file')
+                      ->orWhereNotNull('images');
+            })
+            ->orderBy('created_at', 'desc')
+            ->first();
+
+        if (!$latest) {
+            return response()->json(['message' => 'No event found'], 404);
+        }
+
+        return response()->json(['event' => $latest], 200);
+    } catch (Exception $e) {
+        Log::error('Error fetching latest event: ' . $e->getMessage());
+        return response()->json(['error' => 'Failed to fetch latest event.'], 500);
+    }
+}
 
     public function show($event_id)
     {

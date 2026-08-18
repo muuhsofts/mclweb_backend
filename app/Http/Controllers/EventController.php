@@ -90,20 +90,22 @@ class EventController extends Controller
     }
 
     public function latestEvent()
-    {
-        try {
-            $latest = Event::select($this->getSelectableFields())
-                ->orderBy('event_id', 'asc')
-                ->first();
-            if (!$latest) {
-                return response()->json(['message' => 'No event found'], 404);
-            }
-            return response()->json(['event' => $latest], 200);
-        } catch (Exception $e) {
-            Log::error('Error fetching latest event: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch latest event.'], 500);
+{
+    try {
+        $latest = Event::select($this->getSelectableFields())
+            ->orderBy('created_at', 'desc')   // or orderBy('event_id', 'desc')
+            ->first();
+
+        if (!$latest) {
+            return response()->json(['message' => 'No event found'], 404);
         }
+
+        return response()->json(['event' => $latest], 200);
+    } catch (Exception $e) {
+        Log::error('Error fetching latest event: ' . $e->getMessage());
+        return response()->json(['error' => 'Failed to fetch latest event.'], 500);
     }
+}
 
     public function show($event_id)
     {

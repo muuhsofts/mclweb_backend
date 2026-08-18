@@ -93,11 +93,7 @@ class EventController extends Controller
 {
     try {
         $latest = Event::select($this->getSelectableFields())
-            ->where(function ($query) {
-                $query->whereNotNull('img_file')
-                      ->orWhereNotNull('images');
-            })
-            ->orderBy('created_at', 'desc')
+            ->orderBy('event_id', 'desc')   // ← change to 'event_id'
             ->first();
 
         if (!$latest) {

@@ -89,11 +89,15 @@ class EventController extends Controller
         }
     }
 
-    public function latestEvent()
+   public function latestEvent()
 {
     try {
         $latest = Event::select($this->getSelectableFields())
-            ->orderBy('created_at', 'desc')   // or orderBy('event_id', 'desc')
+            ->where(function ($query) {
+                $query->whereNotNull('img_file')
+                      ->orWhereNotNull('images');
+            })
+            ->orderBy('created_at', 'desc')
             ->first();
 
         if (!$latest) {

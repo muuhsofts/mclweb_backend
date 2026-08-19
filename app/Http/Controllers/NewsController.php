@@ -211,73 +211,42 @@ class NewsController extends Controller
     }
 
     /**
-     * Synchronise content blocks (create/update/delete)
-     */
-    private function syncBlocks($news, $blocks, $request)
-    {
-        $existingIds = [];
-        $order = 0;
+ * Synchronise content blocks – replaces all blocks with the new set.
+ */
+private function syncBlocks($news, $blocks, $request)
+{
+    // Delete all existing blocks and their files
+    foreach ($news->contentBlocks as $block) {
+        $this->deleteBlockFiles($block);
+        $block->delete();
+    }
 
-        foreach ($blocks as $blockData) {
-            // Delete flagged blocks
-            if (isset($blockData['remove']) && $blockData['remove'] && isset($blockData['id'])) {
-                $block = ContentBlock::find($blockData['id']);
-                if ($block && $block->news_id == $news->news_id) {
-                    $this->deleteBlockFiles($block);
-                    $block->delete();
-                }
-                continue;
-            }
+    $order = 0;
+    foreach ($blocks as $blockData) {
+        $fields = [
+            'block_order' => $order++,
+            'type'        => $blockData['type'] ?? 'text',
+            'content'     => $blockData['content'] ?? null,
+            'caption'     => $blockData['caption'] ?? null,
+        ];
 
-            $fields = [
-                'block_order' => $order++,
-                'type'        => $blockData['type'] ?? 'text',
-                'content'     => $blockData['content'] ?? null,
-                'caption'     => $blockData['caption'] ?? null,
-            ];
-
-            // Handle image uploads for image blocks
-            if (isset($blockData['type']) && $blockData['type'] === 'image') {
-                $index = $order - 1; // current block index
-                if ($request->hasFile("block_images.{$index}")) {
-                    $file = $request->file("block_images.{$index}");
-                    if (isset($blockData['id'])) {
-                        $old = ContentBlock::find($blockData['id']);
-                        if ($old && $old->news_id == $news->news_id && $old->image_path) {
-                            if (File::exists(public_path($old->image_path))) {
-                                File::delete(public_path($old->image_path));
-                            }
-                        }
-                    }
-                    $fields['image_path'] = $this->uploadImage($file, 'uploads/blocks');
-                } elseif (isset($blockData['id'])) {
-                    // Preserve existing image
-                    $old = ContentBlock::find($blockData['id']);
-                    if ($old) {
-                        $fields['image_path'] = $old->image_path;
-                    }
-                }
-            }
-
-            // Create or update
-            if (isset($blockData['id'])) {
-                $block = ContentBlock::find($blockData['id']);
-                if ($block && $block->news_id == $news->news_id) {
-                    $block->fill($fields)->save();
-                    $existingIds[] = $block->id;
-                }
-            } else {
-                $block = new ContentBlock($fields);
-                $block->news_id = $news->news_id;
-                $block->save();
-                $existingIds[] = $block->id;
+        if (isset($blockData['type']) && $blockData['type'] === 'image') {
+            $index = $order - 1;
+            if ($request->hasFile("block_images.{$index}")) {
+                $file = $request->file("block_images.{$index}");
+                $fields['image_path'] = $this->uploadImage($file, 'uploads/blocks');
+            } elseif (isset($blockData['image_path'])) {
+                $fields['image_path'] = $blockData['image_path'];
             }
         }
 
-        // Optional: remove blocks not in $existingIds (if you want full replacement, uncomment)
-        // ContentBlock::where('news_id', $news->news_id)->whereNotIn('id', $existingIds)->delete();
+        $block = new ContentBlock($fields);
+        $block->news_id = $news->news_id;
+        $block->save();
     }
+}
 
+   
     /**
      * Delete files attached to a content block
      */

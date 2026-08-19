@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
 use Exception;
 
 class NewsController extends Controller
@@ -43,6 +44,7 @@ class NewsController extends Controller
             $news = News::with('contentBlocks')->orderBy('news_id', 'desc')->get();
             return response()->json(['news' => $news], 200);
         } catch (Exception $e) {
+            Log::error('Error fetching all news: ' . $e->getMessage());
             return response()->json(['error' => 'Failed to fetch news.'], 500);
         }
     }
@@ -59,6 +61,7 @@ class NewsController extends Controller
             }
             return response()->json(['news' => $news], 200);
         } catch (Exception $e) {
+            Log::error('Error fetching news: ' . $e->getMessage());
             return response()->json(['error' => 'Failed to fetch news.'], 500);
         }
     }
@@ -75,6 +78,7 @@ class NewsController extends Controller
             }
             return response()->json(['news' => $news], 200);
         } catch (Exception $e) {
+            Log::error('Error fetching latest news: ' . $e->getMessage());
             return response()->json(['error' => 'Failed to fetch latest news.'], 500);
         }
     }
@@ -88,6 +92,7 @@ class NewsController extends Controller
             $news = News::with('contentBlocks')->orderBy('news_id', 'asc')->get();
             return response()->json(['news' => $news], 200);
         } catch (Exception $e) {
+            Log::error('Error fetching all news (asc): ' . $e->getMessage());
             return response()->json(['error' => 'Failed to fetch news.'], 500);
         }
     }
@@ -104,19 +109,17 @@ class NewsController extends Controller
 
     /**
      * Store a new news post with content blocks
+     * Expects 'blocks' as a JSON string.
      */
     public function store(Request $request)
     {
+        // Validate request – blocks is a JSON string
         $validator = Validator::make($request->all(), [
             'title'          => 'required|string|max:255',
             'featured_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:2048',
             'status'         => 'nullable|in:draft,published',
             'published_at'   => 'nullable|date',
-            'blocks'         => 'nullable|array',
-            'blocks.*.type'  => 'required|in:text,image,video,link',
-            'blocks.*.content' => 'required_if:*.type,text,video,link|string|nullable',
-            'blocks.*.caption' => 'nullable|string|max:500',
-            'blocks.*.image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:2048', // for image type
+            'blocks'         => 'nullable|json', // accept JSON string
         ]);
 
         if ($validator->fails()) {
@@ -130,7 +133,7 @@ class NewsController extends Controller
             $data['featured_image'] = $this->uploadImage($request->file('featured_image'), 'uploads/featured');
         }
 
-        // Auto‑set published_at
+        // Auto‑set published_at if status is published
         if (isset($data['status']) && $data['status'] === 'published' && empty($data['published_at'])) {
             $data['published_at'] = now();
         }
@@ -138,9 +141,18 @@ class NewsController extends Controller
         // Create the news post
         $news = News::create($data);
 
+        // Decode blocks from JSON string to array
+        $blocks = json_decode($data['blocks'] ?? '[]', true);
+        if (!is_array($blocks)) {
+            $blocks = [];
+        }
+
+        // Log the blocks for debugging
+        Log::info('Creating news with blocks:', ['news_id' => $news->news_id, 'blocks' => $blocks]);
+
         // Process blocks if provided
-        if (isset($data['blocks'])) {
-            $this->syncBlocks($news, $data['blocks'], $request);
+        if (!empty($blocks)) {
+            $this->syncBlocks($news, $blocks, $request);
         }
 
         return response()->json([
@@ -151,6 +163,7 @@ class NewsController extends Controller
 
     /**
      * Update an existing news post
+     * Expects 'blocks' as a JSON string.
      */
     public function update(Request $request, $news_id)
     {
@@ -166,13 +179,7 @@ class NewsController extends Controller
                 'status'         => 'nullable|in:draft,published',
                 'published_at'   => 'nullable|date',
                 'remove_featured' => 'nullable|boolean',
-                'blocks'         => 'nullable|array',
-                'blocks.*.id'    => 'nullable|exists:content_blocks,id', // for updating existing
-                'blocks.*.type'  => 'required|in:text,image,video,link',
-                'blocks.*.content' => 'required_if:*.type,text,video,link|string|nullable',
-                'blocks.*.caption' => 'nullable|string|max:500',
-                'blocks.*.image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:2048',
-                'blocks.*.remove' => 'nullable|boolean', // mark for deletion
+                'blocks'         => 'nullable|json', // accept JSON string
             ]);
 
             if ($validator->fails()) {
@@ -202,9 +209,16 @@ class NewsController extends Controller
 
             $news->fill($data)->save();
 
-            // Sync blocks if provided
-            if (isset($data['blocks'])) {
-                $this->syncBlocks($news, $data['blocks'], $request);
+            // Decode blocks from JSON string
+            $blocks = json_decode($data['blocks'] ?? '[]', true);
+            if (!is_array($blocks)) {
+                $blocks = [];
+            }
+
+            Log::info('Updating news with blocks:', ['news_id' => $news->news_id, 'blocks' => $blocks]);
+
+            if (!empty($blocks)) {
+                $this->syncBlocks($news, $blocks, $request);
             }
 
             return response()->json([
@@ -212,12 +226,14 @@ class NewsController extends Controller
                 'news'    => $news->load('contentBlocks')
             ], 200);
         } catch (Exception $e) {
+            Log::error('Update failed: ' . $e->getMessage());
             return response()->json(['error' => 'Failed to update news.'], 500);
         }
     }
 
     /**
      * Helper to sync content blocks (create/update/delete)
+     * The $blocks array is already decoded from JSON.
      */
     private function syncBlocks($news, $blocks, $request)
     {
@@ -238,28 +254,34 @@ class NewsController extends Controller
             // Prepare block fields
             $blockFields = [
                 'block_order' => $order++,
-                'type'        => $blockData['type'],
+                'type'        => $blockData['type'] ?? 'text',
                 'content'     => $blockData['content'] ?? null,
                 'caption'     => $blockData['caption'] ?? null,
             ];
 
             // Handle image upload for 'image' type
-            if ($blockData['type'] === 'image' && isset($blockData['image'])) {
-                // If updating existing block, delete old image
-                if (isset($blockData['id'])) {
-                    $oldBlock = ContentBlock::find($blockData['id']);
-                    if ($oldBlock && $oldBlock->news_id == $news->news_id && $oldBlock->image_path) {
-                        if (File::exists(public_path($oldBlock->image_path))) {
-                            File::delete(public_path($oldBlock->image_path));
+            if (isset($blockData['type']) && $blockData['type'] === 'image') {
+                // If a file is provided in the request (standalone image block)
+                // We expect an uploaded file with key 'block_images[<index>]'
+                $imageIndex = $order - 1; // because we incremented $order
+                if ($request->hasFile("block_images.{$imageIndex}")) {
+                    $file = $request->file("block_images.{$imageIndex}");
+                    // If updating existing block, delete old image
+                    if (isset($blockData['id'])) {
+                        $oldBlock = ContentBlock::find($blockData['id']);
+                        if ($oldBlock && $oldBlock->news_id == $news->news_id && $oldBlock->image_path) {
+                            if (File::exists(public_path($oldBlock->image_path))) {
+                                File::delete(public_path($oldBlock->image_path));
+                            }
                         }
                     }
-                }
-                $blockFields['image_path'] = $this->uploadImage($blockData['image'], 'uploads/blocks');
-            } elseif ($blockData['type'] === 'image' && isset($blockData['id'])) {
-                // Keep existing image if not replaced
-                $oldBlock = ContentBlock::find($blockData['id']);
-                if ($oldBlock) {
-                    $blockFields['image_path'] = $oldBlock->image_path;
+                    $blockFields['image_path'] = $this->uploadImage($file, 'uploads/blocks');
+                } elseif (isset($blockData['id'])) {
+                    // Keep existing image if not replaced
+                    $oldBlock = ContentBlock::find($blockData['id']);
+                    if ($oldBlock) {
+                        $blockFields['image_path'] = $oldBlock->image_path;
+                    }
                 }
             }
 
@@ -278,10 +300,7 @@ class NewsController extends Controller
             }
         }
 
-        // Delete any blocks not in the updated list (if we received a full set)
-        // Optionally: delete all blocks not in $existingBlockIds – but careful with partial updates.
-        // For simplicity, we'll not auto-delete missing blocks; the frontend must send 'remove' flag.
-        // If you want full replacement, uncomment next line:
+        // Delete any blocks not in the updated list (if we want full replacement, uncomment next line)
         // ContentBlock::where('news_id', $news->news_id)->whereNotIn('id', $existingBlockIds)->delete();
     }
 
@@ -320,6 +339,7 @@ class NewsController extends Controller
 
             return response()->json(['message' => 'News deleted successfully'], 200);
         } catch (Exception $e) {
+            Log::error('Delete failed: ' . $e->getMessage());
             return response()->json(['error' => 'Failed to delete news.'], 500);
         }
     }

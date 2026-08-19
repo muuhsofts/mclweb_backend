@@ -18,6 +18,10 @@ class ContentBlock extends Model
         'caption',
     ];
 
+    protected $casts = [
+        'block_order' => 'integer',
+    ];
+
     public function news()
     {
         return $this->belongsTo(News::class, 'news_id', 'news_id');

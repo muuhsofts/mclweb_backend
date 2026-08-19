@@ -7,7 +7,6 @@ use App\Models\ContentBlock;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 use Exception;
 
@@ -15,8 +14,9 @@ class NewsController extends Controller
 {
     public function __construct()
     {
-        // Public methods: index, show, latestnew, allNews, newsByid
-        $this->middleware('auth:sanctum')->except(['index', 'show', 'latestnew', 'allNews', 'newsByid']);
+        $this->middleware('auth:sanctum')->except([
+            'index', 'show', 'latestnew', 'allNews', 'newsByid'
+        ]);
     }
 
     /**
@@ -35,23 +35,17 @@ class NewsController extends Controller
 
     // ---------- PUBLIC ENDPOINTS ----------
 
-    /**
-     * Get all news (latest first) with their content blocks
-     */
     public function index()
     {
         try {
             $news = News::with('contentBlocks')->orderBy('news_id', 'desc')->get();
             return response()->json(['news' => $news], 200);
         } catch (Exception $e) {
-            Log::error('Error fetching all news: ' . $e->getMessage());
+            Log::error('Error fetching news: ' . $e->getMessage());
             return response()->json(['error' => 'Failed to fetch news.'], 500);
         }
     }
 
-    /**
-     * Get a single news item with its blocks
-     */
     public function show($news_id)
     {
         try {
@@ -66,9 +60,6 @@ class NewsController extends Controller
         }
     }
 
-    /**
-     * Get the latest news (with blocks)
-     */
     public function latestnew()
     {
         try {
@@ -83,9 +74,6 @@ class NewsController extends Controller
         }
     }
 
-    /**
-     * Get all news in ascending order (for admin listing)
-     */
     public function allNews()
     {
         try {
@@ -97,29 +85,35 @@ class NewsController extends Controller
         }
     }
 
-    /**
-     * Alias for show()
-     */
     public function newsByid($news_id)
     {
         return $this->show($news_id);
     }
 
+    /**
+     * Get the total count of news records.
+     */
+    public function countNews()
+    {
+        try {
+            $count = News::count();
+            return response()->json(['count_news' => $count], 200);
+        } catch (Exception $e) {
+            Log::error('Error counting news: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to count news.'], 500);
+        }
+    }
+
     // ---------- PROTECTED (AUTH) ENDPOINTS ----------
 
-    /**
-     * Store a new news post with content blocks
-     * Expects 'blocks' as a JSON string.
-     */
     public function store(Request $request)
     {
-        // Validate request – blocks is a JSON string
         $validator = Validator::make($request->all(), [
             'title'          => 'required|string|max:255',
             'featured_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:2048',
             'status'         => 'nullable|in:draft,published',
             'published_at'   => 'nullable|date',
-            'blocks'         => 'nullable|json', // accept JSON string
+            'blocks'         => 'nullable|json',
         ]);
 
         if ($validator->fails()) {
@@ -128,32 +122,22 @@ class NewsController extends Controller
 
         $data = $validator->validated();
 
-        // Handle featured image
         if ($request->hasFile('featured_image')) {
             $data['featured_image'] = $this->uploadImage($request->file('featured_image'), 'uploads/featured');
         }
 
-        // Auto‑set published_at if status is published
         if (isset($data['status']) && $data['status'] === 'published' && empty($data['published_at'])) {
             $data['published_at'] = now();
         }
 
-        // Create the news post
         $news = News::create($data);
 
-        // Decode blocks from JSON string to array
         $blocks = json_decode($data['blocks'] ?? '[]', true);
-        if (!is_array($blocks)) {
-            $blocks = [];
-        }
-
-        // Log the blocks for debugging
-        Log::info('Creating news with blocks:', ['news_id' => $news->news_id, 'blocks' => $blocks]);
-
-        // Process blocks if provided
-        if (!empty($blocks)) {
+        if (is_array($blocks) && !empty($blocks)) {
             $this->syncBlocks($news, $blocks, $request);
         }
+
+        Log::info('News created', ['news_id' => $news->news_id, 'blocks' => count($blocks)]);
 
         return response()->json([
             'message' => 'News created successfully',
@@ -161,10 +145,6 @@ class NewsController extends Controller
         ], 201);
     }
 
-    /**
-     * Update an existing news post
-     * Expects 'blocks' as a JSON string.
-     */
     public function update(Request $request, $news_id)
     {
         try {
@@ -179,7 +159,7 @@ class NewsController extends Controller
                 'status'         => 'nullable|in:draft,published',
                 'published_at'   => 'nullable|date',
                 'remove_featured' => 'nullable|boolean',
-                'blocks'         => 'nullable|json', // accept JSON string
+                'blocks'         => 'nullable|json',
             ]);
 
             if ($validator->fails()) {
@@ -188,7 +168,7 @@ class NewsController extends Controller
 
             $data = $validator->validated();
 
-            // Update featured image
+            // Featured image handling
             if ($request->input('remove_featured', false) && $news->featured_image) {
                 if (File::exists(public_path($news->featured_image))) {
                     File::delete(public_path($news->featured_image));
@@ -209,39 +189,37 @@ class NewsController extends Controller
 
             $news->fill($data)->save();
 
-            // Decode blocks from JSON string
             $blocks = json_decode($data['blocks'] ?? '[]', true);
-            if (!is_array($blocks)) {
-                $blocks = [];
-            }
-
-            Log::info('Updating news with blocks:', ['news_id' => $news->news_id, 'blocks' => $blocks]);
-
-            if (!empty($blocks)) {
+            if (is_array($blocks) && !empty($blocks)) {
                 $this->syncBlocks($news, $blocks, $request);
             }
+
+            Log::info('News updated', ['news_id' => $news->news_id]);
 
             return response()->json([
                 'message' => 'News updated successfully',
                 'news'    => $news->load('contentBlocks')
             ], 200);
+
         } catch (Exception $e) {
-            Log::error('Update failed: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to update news.'], 500);
+            Log::error('Update failed: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            return response()->json([
+                'error' => 'Failed to update news.',
+                'detail' => $e->getMessage() // temporarily for debugging – remove in production
+            ], 500);
         }
     }
 
     /**
-     * Helper to sync content blocks (create/update/delete)
-     * The $blocks array is already decoded from JSON.
+     * Synchronise content blocks (create/update/delete)
      */
     private function syncBlocks($news, $blocks, $request)
     {
-        $existingBlockIds = [];
+        $existingIds = [];
         $order = 0;
 
         foreach ($blocks as $blockData) {
-            // If block has 'remove' flag, delete it
+            // Delete flagged blocks
             if (isset($blockData['remove']) && $blockData['remove'] && isset($blockData['id'])) {
                 $block = ContentBlock::find($blockData['id']);
                 if ($block && $block->news_id == $news->news_id) {
@@ -251,61 +229,57 @@ class NewsController extends Controller
                 continue;
             }
 
-            // Prepare block fields
-            $blockFields = [
+            $fields = [
                 'block_order' => $order++,
                 'type'        => $blockData['type'] ?? 'text',
                 'content'     => $blockData['content'] ?? null,
                 'caption'     => $blockData['caption'] ?? null,
             ];
 
-            // Handle image upload for 'image' type
+            // Handle image uploads for image blocks
             if (isset($blockData['type']) && $blockData['type'] === 'image') {
-                // If a file is provided in the request (standalone image block)
-                // We expect an uploaded file with key 'block_images[<index>]'
-                $imageIndex = $order - 1; // because we incremented $order
-                if ($request->hasFile("block_images.{$imageIndex}")) {
-                    $file = $request->file("block_images.{$imageIndex}");
-                    // If updating existing block, delete old image
+                $index = $order - 1; // current block index
+                if ($request->hasFile("block_images.{$index}")) {
+                    $file = $request->file("block_images.{$index}");
                     if (isset($blockData['id'])) {
-                        $oldBlock = ContentBlock::find($blockData['id']);
-                        if ($oldBlock && $oldBlock->news_id == $news->news_id && $oldBlock->image_path) {
-                            if (File::exists(public_path($oldBlock->image_path))) {
-                                File::delete(public_path($oldBlock->image_path));
+                        $old = ContentBlock::find($blockData['id']);
+                        if ($old && $old->news_id == $news->news_id && $old->image_path) {
+                            if (File::exists(public_path($old->image_path))) {
+                                File::delete(public_path($old->image_path));
                             }
                         }
                     }
-                    $blockFields['image_path'] = $this->uploadImage($file, 'uploads/blocks');
+                    $fields['image_path'] = $this->uploadImage($file, 'uploads/blocks');
                 } elseif (isset($blockData['id'])) {
-                    // Keep existing image if not replaced
-                    $oldBlock = ContentBlock::find($blockData['id']);
-                    if ($oldBlock) {
-                        $blockFields['image_path'] = $oldBlock->image_path;
+                    // Preserve existing image
+                    $old = ContentBlock::find($blockData['id']);
+                    if ($old) {
+                        $fields['image_path'] = $old->image_path;
                     }
                 }
             }
 
-            // Update or create
+            // Create or update
             if (isset($blockData['id'])) {
                 $block = ContentBlock::find($blockData['id']);
                 if ($block && $block->news_id == $news->news_id) {
-                    $block->fill($blockFields)->save();
-                    $existingBlockIds[] = $block->id;
+                    $block->fill($fields)->save();
+                    $existingIds[] = $block->id;
                 }
             } else {
-                $block = new ContentBlock($blockFields);
+                $block = new ContentBlock($fields);
                 $block->news_id = $news->news_id;
                 $block->save();
-                $existingBlockIds[] = $block->id;
+                $existingIds[] = $block->id;
             }
         }
 
-        // Delete any blocks not in the updated list (if we want full replacement, uncomment next line)
-        // ContentBlock::where('news_id', $news->news_id)->whereNotIn('id', $existingBlockIds)->delete();
+        // Optional: remove blocks not in $existingIds (if you want full replacement, uncomment)
+        // ContentBlock::where('news_id', $news->news_id)->whereNotIn('id', $existingIds)->delete();
     }
 
     /**
-     * Delete files associated with a block
+     * Delete files attached to a content block
      */
     private function deleteBlockFiles($block)
     {
@@ -314,9 +288,6 @@ class NewsController extends Controller
         }
     }
 
-    /**
-     * Delete a news post and all its blocks & files
-     */
     public function destroy($news_id)
     {
         try {
@@ -325,17 +296,17 @@ class NewsController extends Controller
                 return response()->json(['message' => 'News not found'], 404);
             }
 
-            // Delete featured image
             if ($news->featured_image && File::exists(public_path($news->featured_image))) {
                 File::delete(public_path($news->featured_image));
             }
 
-            // Delete all block images
             foreach ($news->contentBlocks as $block) {
                 $this->deleteBlockFiles($block);
             }
 
             $news->delete();
+
+            Log::info('News deleted', ['news_id' => $news_id]);
 
             return response()->json(['message' => 'News deleted successfully'], 200);
         } catch (Exception $e) {
@@ -345,8 +316,7 @@ class NewsController extends Controller
     }
 
     /**
-     * Upload an image for a content block (standalone endpoint)
-     * Returns the URL so frontend can insert into blocks array.
+     * Upload an image for a content block (standalone)
      */
     public function uploadBlockImage(Request $request)
     {

@@ -125,9 +125,10 @@ Route::get('/all/sub-events', [SubEventController::class, 'allEvents']);
 Route::get('/allsubscriptions', [SubscriptionController::class, 'allsubscriptions']);
 Route::get('/latestbrand', [BrandController::class, 'latestbrand']);
 Route::get('/readmore-news/{news_id}', [NewsController::class, 'newsByid']);
-Route::get('/fetch-all-galleries', [GalleryController::class, 'fetchAllGallery']);
-Route::get('/news/category/{category}', [NewsController::class, 'getByCategory']);
-Route::get('/news/images/all', [NewsController::class, 'getAllImages']);
+
+// ***** REMOVED obsolete news routes *****
+// Route::get('/news/category/{category}', [NewsController::class, 'getByCategory']);
+// Route::get('/news/images/all', [NewsController::class, 'getAllImages']);
 
 // Protected Routes (require authentication)
 Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
@@ -346,20 +347,22 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
     Route::post('/news-homes/{news_home_id}', [NewsHomeController::class, 'update']);
     Route::delete('/news-homes/{news_home_id}', [NewsHomeController::class, 'destroy']);
 
-    // ***** ENHANCED NEWS ENDPOINTS *****
-    // All routes below now support:
-    // - Rich HTML description (sanitized)
-    // - Multiple gallery images (images[])
-    // - Removal of gallery images (remove_images[])
+    // ====== NEWS CONTENT BLOCK ROUTES ======
     Route::prefix('news')->group(function () {
+        // Public endpoints (already exposed outside auth group via controller __construct)
         Route::get('/', [NewsController::class, 'index']);
         Route::get('/{news_id}', [NewsController::class, 'show']);
+
+        // Protected CRUD
         Route::post('/', [NewsController::class, 'store'])->middleware('auth:sanctum');
         Route::post('/{news_id}/update', [NewsController::class, 'update'])->middleware('auth:sanctum');
         Route::delete('/{news_id}', [NewsController::class, 'destroy'])->middleware('auth:sanctum');
+
+        // Extra: upload an image for a content block
+        Route::post('/upload-block-image', [NewsController::class, 'uploadBlockImage'])->middleware('auth:sanctum');
     });
     Route::get('/count/news', [NewsController::class, 'countNews'])->name('news.count');
-    // End of News endpoints
+    // ====================================
 
     // Sub News
     Route::get('/sub-news', [SubNewsController::class, 'index']);

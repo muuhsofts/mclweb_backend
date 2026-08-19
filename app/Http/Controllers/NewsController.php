@@ -3,153 +3,120 @@
 namespace App\Http\Controllers;
 
 use App\Models\News;
+use App\Models\ContentBlock;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Exception;
 
 class NewsController extends Controller
 {
     public function __construct()
     {
+        // Public methods: index, show, latestnew, allNews, newsByid
         $this->middleware('auth:sanctum')->except(['index', 'show', 'latestnew', 'allNews', 'newsByid']);
     }
 
     /**
-     * Helper: Upload a file and return the relative path.
+     * Upload helper for images (featured or block images)
      */
-    private function uploadFile($file, $directory = 'uploads/news')
+    private function uploadImage($file, $directory = 'uploads/featured')
     {
-        $uploadPath = public_path($directory);
-        if (!File::exists($uploadPath)) {
-            File::makeDirectory($uploadPath, 0755, true);
+        $path = public_path($directory);
+        if (!File::exists($path)) {
+            File::makeDirectory($path, 0755, true);
         }
-        $fileName = time() . '_' . $file->getClientOriginalName();
-        $file->move($uploadPath, $fileName);
-        return $directory . '/' . $fileName;
+        $name = time() . '_' . $file->getClientOriginalName();
+        $file->move($path, $name);
+        return $directory . '/' . $name;
     }
 
-    /**
-     * Get all news records in ascending order (by news_id).
-     */
-    public function allNews()
-    {
-        try {
-            $newsRecords = News::select(
-                'news_id', 'category', 'description', 'news_img', 'pdf_file',
-                'read_more_url_lnk', 'images', 'read_more_links', 'created_at', 'updated_at'
-            )
-                ->orderBy('news_id', 'asc')
-                ->get();
-
-            return response()->json(['news' => $newsRecords], 200);
-        } catch (Exception $e) {
-            Log::error('Error fetching all news: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch news records.'], 500);
-        }
-    }
+    // ---------- PUBLIC ENDPOINTS ----------
 
     /**
-     * Get the total count of news records.
-     */
-    public function countNews()
-    {
-        try {
-            $count = News::count();
-            return response()->json(['count_news' => $count], 200);
-        } catch (Exception $e) {
-            return response()->json(['error' => 'Failed to count news.'], 500);
-        }
-    }
-
-    /**
-     * Get news records in descending order (latest first).
+     * Get all news (latest first) with their content blocks
      */
     public function index()
     {
         try {
-            $newsRecords = News::select(
-                'news_id', 'category', 'description', 'news_img', 'pdf_file',
-                'read_more_url_lnk', 'images', 'read_more_links', 'created_at', 'updated_at'
-            )
-                ->orderBy('news_id', 'desc')
-                ->get();
-
-            return response()->json(['news' => $newsRecords], 200);
+            $news = News::with('contentBlocks')->orderBy('news_id', 'desc')->get();
+            return response()->json(['news' => $news], 200);
         } catch (Exception $e) {
             return response()->json(['error' => 'Failed to fetch news.'], 500);
         }
     }
 
     /**
-     * Get the latest news record (by created_at).
+     * Get a single news item with its blocks
+     */
+    public function show($news_id)
+    {
+        try {
+            $news = News::with('contentBlocks')->find($news_id);
+            if (!$news) {
+                return response()->json(['message' => 'News not found'], 404);
+            }
+            return response()->json(['news' => $news], 200);
+        } catch (Exception $e) {
+            return response()->json(['error' => 'Failed to fetch news.'], 500);
+        }
+    }
+
+    /**
+     * Get the latest news (with blocks)
      */
     public function latestnew()
     {
         try {
-            $latestNews = News::select(
-                'news_id', 'category', 'description', 'news_img', 'pdf_file',
-                'read_more_url_lnk', 'images', 'read_more_links', 'created_at', 'updated_at'
-            )
-                ->orderBy('created_at', 'desc')
-                ->first();
-
-            if (!$latestNews) {
-                return response()->json(['message' => 'No news record found'], 404);
+            $news = News::with('contentBlocks')->orderBy('created_at', 'desc')->first();
+            if (!$news) {
+                return response()->json(['message' => 'No news found'], 404);
             }
-            return response()->json(['news' => $latestNews], 200);
+            return response()->json(['news' => $news], 200);
         } catch (Exception $e) {
             return response()->json(['error' => 'Failed to fetch latest news.'], 500);
         }
     }
 
     /**
-     * Alias for show() – get a news record by ID.
+     * Get all news in ascending order (for admin listing)
+     */
+    public function allNews()
+    {
+        try {
+            $news = News::with('contentBlocks')->orderBy('news_id', 'asc')->get();
+            return response()->json(['news' => $news], 200);
+        } catch (Exception $e) {
+            return response()->json(['error' => 'Failed to fetch news.'], 500);
+        }
+    }
+
+    /**
+     * Alias for show()
      */
     public function newsByid($news_id)
     {
         return $this->show($news_id);
     }
 
-    /**
-     * Display a single news record.
-     */
-    public function show($news_id)
-    {
-        try {
-            $news = News::select(
-                'news_id', 'category', 'description', 'news_img', 'pdf_file',
-                'read_more_url_lnk', 'images', 'read_more_links', 'created_at', 'updated_at'
-            )
-                ->find($news_id);
-
-            if (!$news) {
-                return response()->json(['message' => 'News record not found'], 404);
-            }
-
-            return response()->json(['news' => $news], 200);
-        } catch (Exception $e) {
-            return response()->json(['error' => 'Failed to fetch news record.'], 500);
-        }
-    }
+    // ---------- PROTECTED (AUTH) ENDPOINTS ----------
 
     /**
-     * Store a new news record.
+     * Store a new news post with content blocks
      */
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'category'        => 'required|string|max:255',
-            'description'     => 'nullable|string',
-            'news_img'        => 'nullable|file|mimes:jpeg,png,jpg,gif|max:2048',
-            'pdf_file'        => 'nullable|file|mimes:pdf|max:2048',
-            'read_more_url_lnk' => 'nullable|url|max:500',
-            'images.*'        => 'nullable|file|mimes:jpeg,png,jpg,gif|max:2048', // multiple
-            'read_more_links' => 'nullable|array',
-            'read_more_links.*' => 'nullable|url|max:500',
+            'title'          => 'required|string|max:255',
+            'featured_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:2048',
+            'status'         => 'nullable|in:draft,published',
+            'published_at'   => 'nullable|date',
+            'blocks'         => 'nullable|array',
+            'blocks.*.type'  => 'required|in:text,image,video,link',
+            'blocks.*.content' => 'required_if:*.type,text,video,link|string|nullable',
+            'blocks.*.caption' => 'nullable|string|max:500',
+            'blocks.*.image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:2048', // for image type
         ]);
 
         if ($validator->fails()) {
@@ -158,64 +125,54 @@ class NewsController extends Controller
 
         $data = $validator->validated();
 
-        // Sanitize HTML description
-        $data['description'] = clean($data['description'] ?? '');
-
-        // Handle cover image (news_img)
-        if ($request->hasFile('news_img') && $request->file('news_img')->isValid()) {
-            $data['news_img'] = $this->uploadFile($request->file('news_img'));
+        // Handle featured image
+        if ($request->hasFile('featured_image')) {
+            $data['featured_image'] = $this->uploadImage($request->file('featured_image'), 'uploads/featured');
         }
 
-        // Handle PDF
-        if ($request->hasFile('pdf_file') && $request->file('pdf_file')->isValid()) {
-            $data['pdf_file'] = $this->uploadFile($request->file('pdf_file'));
+        // Auto‑set published_at
+        if (isset($data['status']) && $data['status'] === 'published' && empty($data['published_at'])) {
+            $data['published_at'] = now();
         }
 
-        // Handle multiple gallery images – store paths in 'images' array
-        $imagePaths = [];
-        if ($request->hasFile('images')) {
-            foreach ($request->file('images') as $image) {
-                if ($image->isValid()) {
-                    $imagePaths[] = $this->uploadFile($image);
-                }
-            }
-        }
-        $data['images'] = $imagePaths;
-
-        // Handle multiple read-more links – ensure it's an array
-        $data['read_more_links'] = $data['read_more_links'] ?? [];
-
-        // Create the news record
+        // Create the news post
         $news = News::create($data);
 
+        // Process blocks if provided
+        if (isset($data['blocks'])) {
+            $this->syncBlocks($news, $data['blocks'], $request);
+        }
+
         return response()->json([
-            'message' => 'News record created successfully',
-            'news'    => $news
+            'message' => 'News created successfully',
+            'news'    => $news->load('contentBlocks')
         ], 201);
     }
 
     /**
-     * Update an existing news record.
+     * Update an existing news post
      */
     public function update(Request $request, $news_id)
     {
         try {
             $news = News::find($news_id);
             if (!$news) {
-                return response()->json(['message' => 'News record not found'], 404);
+                return response()->json(['message' => 'News not found'], 404);
             }
 
             $validator = Validator::make($request->all(), [
-                'category'        => 'required|string|max:255',
-                'description'     => 'nullable|string',
-                'news_img'        => 'nullable|file|mimes:jpeg,png,jpg,gif|max:2048',
-                'pdf_file'        => 'nullable|file|mimes:pdf|max:2048',
-                'read_more_url_lnk' => 'nullable|url|max:500',
-                'images.*'        => 'nullable|file|mimes:jpeg,png,jpg,gif|max:2048',
-                'read_more_links' => 'nullable|array',
-                'read_more_links.*' => 'nullable|url|max:500',
-                'remove_image_indices' => 'nullable|array',
-                'remove_image_indices.*' => 'integer',
+                'title'          => 'sometimes|required|string|max:255',
+                'featured_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:2048',
+                'status'         => 'nullable|in:draft,published',
+                'published_at'   => 'nullable|date',
+                'remove_featured' => 'nullable|boolean',
+                'blocks'         => 'nullable|array',
+                'blocks.*.id'    => 'nullable|exists:content_blocks,id', // for updating existing
+                'blocks.*.type'  => 'required|in:text,image,video,link',
+                'blocks.*.content' => 'required_if:*.type,text,video,link|string|nullable',
+                'blocks.*.caption' => 'nullable|string|max:500',
+                'blocks.*.image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:2048',
+                'blocks.*.remove' => 'nullable|boolean', // mark for deletion
             ]);
 
             if ($validator->fails()) {
@@ -224,170 +181,168 @@ class NewsController extends Controller
 
             $data = $validator->validated();
 
-            // Sanitize description
-            $data['description'] = clean($data['description'] ?? '');
-
-            // Handle cover image replacement
-            if ($request->hasFile('news_img') && $request->file('news_img')->isValid()) {
-                if ($news->news_img && File::exists(public_path($news->news_img))) {
-                    File::delete(public_path($news->news_img));
+            // Update featured image
+            if ($request->input('remove_featured', false) && $news->featured_image) {
+                if (File::exists(public_path($news->featured_image))) {
+                    File::delete(public_path($news->featured_image));
                 }
-                $data['news_img'] = $this->uploadFile($request->file('news_img'));
-            } else {
-                $data['news_img'] = $news->news_img;
+                $data['featured_image'] = null;
             }
 
-            // Handle PDF replacement
-            if ($request->hasFile('pdf_file') && $request->file('pdf_file')->isValid()) {
-                if ($news->pdf_file && File::exists(public_path($news->pdf_file))) {
-                    File::delete(public_path($news->pdf_file));
+            if ($request->hasFile('featured_image')) {
+                if ($news->featured_image && File::exists(public_path($news->featured_image))) {
+                    File::delete(public_path($news->featured_image));
                 }
-                $data['pdf_file'] = $this->uploadFile($request->file('pdf_file'));
-            } else {
-                $data['pdf_file'] = $news->pdf_file;
+                $data['featured_image'] = $this->uploadImage($request->file('featured_image'), 'uploads/featured');
             }
 
-            // Preserve single read_more_url_lnk if not provided
-            $data['read_more_url_lnk'] = $request->filled('read_more_url_lnk')
-                ? $data['read_more_url_lnk']
-                : $news->read_more_url_lnk;
-
-            // ---- Manage gallery images (JSON array) ----
-            $existingImages = $news->images ?? [];
-
-            // Remove images by index
-            if ($request->has('remove_image_indices')) {
-                $indicesToRemove = $request->input('remove_image_indices');
-                foreach ($indicesToRemove as $index) {
-                    if (isset($existingImages[$index]) && File::exists(public_path($existingImages[$index]))) {
-                        File::delete(public_path($existingImages[$index]));
-                    }
-                    unset($existingImages[$index]);
-                }
-                // Re-index array
-                $existingImages = array_values($existingImages);
+            if (isset($data['status']) && $data['status'] === 'published' && empty($data['published_at'])) {
+                $data['published_at'] = now();
             }
 
-            // Add new uploaded images
-            $newImagePaths = [];
-            if ($request->hasFile('images')) {
-                foreach ($request->file('images') as $image) {
-                    if ($image->isValid()) {
-                        $newImagePaths[] = $this->uploadFile($image);
-                    }
-                }
-            }
-            $data['images'] = array_merge($existingImages, $newImagePaths);
-
-            // ---- Manage read_more_links ----
-            if ($request->has('read_more_links')) {
-                $data['read_more_links'] = $data['read_more_links'] ?? [];
-            } else {
-                $data['read_more_links'] = $news->read_more_links;
-            }
-
-            // Update the news record
             $news->fill($data)->save();
 
+            // Sync blocks if provided
+            if (isset($data['blocks'])) {
+                $this->syncBlocks($news, $data['blocks'], $request);
+            }
+
             return response()->json([
-                'message' => 'News record updated successfully.',
-                'news'    => $news->fresh()
+                'message' => 'News updated successfully',
+                'news'    => $news->load('contentBlocks')
             ], 200);
         } catch (Exception $e) {
-            Log::error('Update failed: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to update news record.'], 500);
+            return response()->json(['error' => 'Failed to update news.'], 500);
         }
     }
 
     /**
-     * Delete a news record (and its associated files).
+     * Helper to sync content blocks (create/update/delete)
+     */
+    private function syncBlocks($news, $blocks, $request)
+    {
+        $existingBlockIds = [];
+        $order = 0;
+
+        foreach ($blocks as $blockData) {
+            // If block has 'remove' flag, delete it
+            if (isset($blockData['remove']) && $blockData['remove'] && isset($blockData['id'])) {
+                $block = ContentBlock::find($blockData['id']);
+                if ($block && $block->news_id == $news->news_id) {
+                    $this->deleteBlockFiles($block);
+                    $block->delete();
+                }
+                continue;
+            }
+
+            // Prepare block fields
+            $blockFields = [
+                'block_order' => $order++,
+                'type'        => $blockData['type'],
+                'content'     => $blockData['content'] ?? null,
+                'caption'     => $blockData['caption'] ?? null,
+            ];
+
+            // Handle image upload for 'image' type
+            if ($blockData['type'] === 'image' && isset($blockData['image'])) {
+                // If updating existing block, delete old image
+                if (isset($blockData['id'])) {
+                    $oldBlock = ContentBlock::find($blockData['id']);
+                    if ($oldBlock && $oldBlock->news_id == $news->news_id && $oldBlock->image_path) {
+                        if (File::exists(public_path($oldBlock->image_path))) {
+                            File::delete(public_path($oldBlock->image_path));
+                        }
+                    }
+                }
+                $blockFields['image_path'] = $this->uploadImage($blockData['image'], 'uploads/blocks');
+            } elseif ($blockData['type'] === 'image' && isset($blockData['id'])) {
+                // Keep existing image if not replaced
+                $oldBlock = ContentBlock::find($blockData['id']);
+                if ($oldBlock) {
+                    $blockFields['image_path'] = $oldBlock->image_path;
+                }
+            }
+
+            // Update or create
+            if (isset($blockData['id'])) {
+                $block = ContentBlock::find($blockData['id']);
+                if ($block && $block->news_id == $news->news_id) {
+                    $block->fill($blockFields)->save();
+                    $existingBlockIds[] = $block->id;
+                }
+            } else {
+                $block = new ContentBlock($blockFields);
+                $block->news_id = $news->news_id;
+                $block->save();
+                $existingBlockIds[] = $block->id;
+            }
+        }
+
+        // Delete any blocks not in the updated list (if we received a full set)
+        // Optionally: delete all blocks not in $existingBlockIds – but careful with partial updates.
+        // For simplicity, we'll not auto-delete missing blocks; the frontend must send 'remove' flag.
+        // If you want full replacement, uncomment next line:
+        // ContentBlock::where('news_id', $news->news_id)->whereNotIn('id', $existingBlockIds)->delete();
+    }
+
+    /**
+     * Delete files associated with a block
+     */
+    private function deleteBlockFiles($block)
+    {
+        if ($block->image_path && File::exists(public_path($block->image_path))) {
+            File::delete(public_path($block->image_path));
+        }
+    }
+
+    /**
+     * Delete a news post and all its blocks & files
      */
     public function destroy($news_id)
     {
         try {
             $news = News::find($news_id);
             if (!$news) {
-                return response()->json(['message' => 'News record not found'], 404);
+                return response()->json(['message' => 'News not found'], 404);
             }
 
-            // Delete cover image
-            if ($news->news_img && File::exists(public_path($news->news_img))) {
-                File::delete(public_path($news->news_img));
+            // Delete featured image
+            if ($news->featured_image && File::exists(public_path($news->featured_image))) {
+                File::delete(public_path($news->featured_image));
             }
 
-            // Delete PDF
-            if ($news->pdf_file && File::exists(public_path($news->pdf_file))) {
-                File::delete(public_path($news->pdf_file));
-            }
-
-            // Delete all gallery images (from the 'images' array)
-            $galleryImages = $news->images ?? [];
-            foreach ($galleryImages as $imagePath) {
-                if (File::exists(public_path($imagePath))) {
-                    File::delete(public_path($imagePath));
-                }
+            // Delete all block images
+            foreach ($news->contentBlocks as $block) {
+                $this->deleteBlockFiles($block);
             }
 
             $news->delete();
 
-            return response()->json(['message' => 'News record deleted successfully'], 200);
+            return response()->json(['message' => 'News deleted successfully'], 200);
         } catch (Exception $e) {
-            return response()->json(['error' => 'Failed to delete news record.'], 500);
+            return response()->json(['error' => 'Failed to delete news.'], 500);
         }
     }
 
     /**
- * Get news by category (public).
- */
-public function getByCategory($category)
-{
-    try {
-        $news = News::select(
-            'news_id', 'category', 'description', 'news_img', 'pdf_file',
-            'read_more_url_lnk', 'images', 'read_more_links', 'created_at', 'updated_at'
-        )
-        ->where('category', $category)
-        ->orderBy('news_id', 'desc')
-        ->get();
+     * Upload an image for a content block (standalone endpoint)
+     * Returns the URL so frontend can insert into blocks array.
+     */
+    public function uploadBlockImage(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'image' => 'required|file|mimes:jpeg,png,jpg,gif,webp|max:2048',
+        ]);
 
-        if ($news->isEmpty()) {
-            return response()->json(['message' => 'No news found for this category'], 404);
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
         }
 
-        return response()->json(['news' => $news], 200);
-    } catch (Exception $e) {
-        Log::error('Error fetching news by category: ' . $e->getMessage());
-        return response()->json(['error' => 'Failed to fetch news by category.'], 500);
+        $path = $this->uploadImage($request->file('image'), 'uploads/blocks');
+
+        return response()->json([
+            'location' => asset($path),
+            'path'     => $path,
+        ], 200);
     }
-}
-
-/**
- * Get all gallery images from all news records (public).
- * Returns a unique list of image URLs.
- */
-public function getAllImages()
-{
-    try {
-        // Fetch all news records and extract images
-        $allNews = News::select('images')->get();
-        $allImages = [];
-
-        foreach ($allNews as $news) {
-            if (!empty($news->images) && is_array($news->images)) {
-                foreach ($news->images as $path) {
-                    $allImages[] = asset($path);
-                }
-            }
-        }
-
-        // Remove duplicates and re-index
-        $uniqueImages = array_unique($allImages);
-        $uniqueImages = array_values($uniqueImages);
-
-        return response()->json(['images' => $uniqueImages], 200);
-    } catch (Exception $e) {
-        Log::error('Error fetching all images: ' . $e->getMessage());
-        return response()->json(['error' => 'Failed to fetch images.'], 500);
-    }
-}
 }

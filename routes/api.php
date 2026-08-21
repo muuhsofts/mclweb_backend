@@ -122,9 +122,12 @@ Route::get('/latestEarlyCareer', [EarlyCareersController::class, 'latestEarlyCar
 Route::get('/allBrands', [BrandController::class, 'allBrands']);
 Route::get('/latestService', [ServicesHomeController::class, 'latestService']);
 
-// ---- Events - Public ----
+
+// ====== PUBLIC EVENT ROUTES ======
 Route::get('/all-events', [EventController::class, 'allEvents']);
 Route::get('/latestEvent', [EventController::class, 'latestEvent']);
+Route::get('/events/{event_id}', [EventController::class, 'show']);   // plural
+Route::get('/event/{event_id}', [EventController::class, 'show']);    // singular (fallbac
 
 Route::get('/about-mwananchi/all', [AboutMwananchiController::class, 'allRecords']);
 Route::get('/all/sub-events', [SubEventController::class, 'allEvents']);
@@ -134,7 +137,6 @@ Route::get('/latestbrand', [BrandController::class, 'latestbrand']);
 // News detail (public)
 Route::get('/readmore-news/{news_id}', [NewsController::class, 'newsByid']);
 Route::get('/news/{news_id}', [NewsController::class, 'show']);
-Route::get('/events/{event_id}', [EventController::class, 'show']);  // single (admin detail)
 
 
 // ============================================================
@@ -376,13 +378,14 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
     // ---- Events ----
     // Admin/CRUD routes (protected)
     Route::prefix('events')->group(function () {
-        Route::get('/', [EventController::class, 'index']);          // list all (admin)
-        Route::get('/latest', [EventController::class, 'latestEvent']); // optional admin latest
-        Route::get('/dropdown-data', [EventController::class, 'getDropdownData']);
-        Route::get('/count', [EventController::class, 'countEvents']);
-        Route::post('/', [EventController::class, 'store']);
-        Route::post('/{event_id}/update', [EventController::class, 'update']);
-        Route::delete('/{event_id}', [EventController::class, 'destroy']);
+    
+    Route::get('/', [EventController::class, 'index']);          // admin list
+    Route::get('/latest', [EventController::class, 'latestEvent']);
+    Route::get('/dropdown-data', [EventController::class, 'getDropdownData']);
+    Route::get('/count', [EventController::class, 'countEvents']);
+    Route::post('/', [EventController::class, 'store']);
+    Route::post('/{event_id}/update', [EventController::class, 'update']);
+    Route::delete('/{event_id}', [EventController::class, 'destroy']);
     });
 
     // ---- Contact ----

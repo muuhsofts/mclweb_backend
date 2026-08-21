@@ -14,17 +14,18 @@ class Event extends Model
     protected $primaryKey = 'event_id';
 
     protected $fillable = [
-        'event_category',
         'title',
         'slug',
         'featured_image',
         'status',
         'published_at',
-        'description',      // keep for backward compatibility
-        'img_file',         // keep for backward compatibility
-        'video_link',       // keep for backward compatibility
-        'images',           // keep for backward compatibility
-        'video_links',      // keep for backward compatibility
+        'location',
+        // legacy fields (keep if needed)
+        'description',
+        'img_file',
+        'video_link',
+        'images',
+        'video_links',
     ];
 
     protected $casts = [
@@ -39,7 +40,7 @@ class Event extends Model
 
         static::creating(function ($event) {
             if (empty($event->slug)) {
-                $event->slug = Str::slug($event->title ?? $event->event_category);
+                $event->slug = Str::slug($event->title);
             }
         });
 

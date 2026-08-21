@@ -14,8 +14,6 @@ class EventController extends Controller
 {
     public function __construct()
     {
-        // Public: index, show, latestEvent, allEvents
-        // Protected: store, update, destroy, etc.
         $this->middleware('auth:sanctum')->except([
             'index', 'show', 'latestEvent', 'allEvents', 'countEvents'
         ]);
@@ -106,11 +104,11 @@ class EventController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'event_category' => 'required|string|max:255',
             'title'          => 'required|string|max:255',
             'featured_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:5120',
             'status'         => 'nullable|in:draft,published',
             'published_at'   => 'nullable|date',
+            'location'       => 'nullable|string|max:255',
             'blocks'         => 'nullable|json',
         ]);
 
@@ -128,7 +126,6 @@ class EventController extends Controller
             $data['published_at'] = now();
         }
 
-        // Remove blocks from mass-assignment
         unset($data['blocks']);
 
         $event = Event::create($data);
@@ -155,11 +152,11 @@ class EventController extends Controller
             }
 
             $validator = Validator::make($request->all(), [
-                'event_category' => 'sometimes|required|string|max:255',
                 'title'          => 'sometimes|required|string|max:255',
                 'featured_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:5120',
                 'status'         => 'nullable|in:draft,published',
                 'published_at'   => 'nullable|date',
+                'location'       => 'nullable|string|max:255',
                 'remove_featured' => 'nullable|boolean',
                 'blocks'         => 'nullable|json',
             ]);
@@ -212,25 +209,19 @@ class EventController extends Controller
         }
     }
 
-    /**
-     * Replace all content blocks (like NewsController::syncBlocks)
-     */
     private function syncBlocks($event, array $blocks, Request $request)
     {
-        // 1. Delete old blocks + their files
         foreach ($event->contentBlocks as $block) {
             $this->deleteBlockFiles($block);
             $block->delete();
         }
 
-        // 2. Get all uploaded block images
         $allBlockImages = $request->file('block_images') ?? [];
 
         $order = 0;
         foreach ($blocks as $index => $blockData) {
             $imagePaths = [];
 
-            // A. New uploads for this block index
             $files = $allBlockImages[$index] ?? [];
             if (!is_array($files)) {
                 $files = $files ? [$files] : [];
@@ -241,7 +232,6 @@ class EventController extends Controller
                 }
             }
 
-            // B. Keep existing paths from frontend
             if (!empty($blockData['image_paths']) && is_array($blockData['image_paths'])) {
                 foreach ($blockData['image_paths'] as $path) {
                     if ($path && is_string($path)) {
@@ -250,12 +240,10 @@ class EventController extends Controller
                 }
             }
 
-            // C. Backward-compat single image_path
             if (empty($imagePaths) && !empty($blockData['image_path'])) {
                 $imagePaths[] = $blockData['image_path'];
             }
 
-            // Deduplicate & clean
             $imagePaths = array_values(array_unique(array_filter($imagePaths)));
 
             $fields = [
@@ -281,7 +269,6 @@ class EventController extends Controller
                 }
             }
         }
-        // also check old image_path column (if any)
         if ($block->image_path && File::exists(public_path($block->image_path))) {
             File::delete(public_path($block->image_path));
         }
@@ -311,26 +298,5 @@ class EventController extends Controller
             Log::error('Delete failed: ' . $e->getMessage());
             return response()->json(['error' => 'Failed to delete event.'], 500);
         }
-    }
-
-    /**
-     * Optional: endpoint to upload a single block image (if needed)
-     */
-    public function uploadBlockImage(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'image' => 'required|file|mimes:jpeg,png,jpg,gif,webp|max:5120',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-
-        $path = $this->uploadFile($request->file('image'), 'uploads/events/blocks');
-
-        return response()->json([
-            'location' => asset($path),
-            'path'     => $path,
-        ], 200);
     }
 }

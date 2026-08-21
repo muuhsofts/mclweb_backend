@@ -134,6 +134,8 @@ Route::get('/latestbrand', [BrandController::class, 'latestbrand']);
 // News detail (public)
 Route::get('/readmore-news/{news_id}', [NewsController::class, 'newsByid']);
 Route::get('/news/{news_id}', [NewsController::class, 'show']);
+Route::get('/events/{event_id}', [EventController::class, 'show']);  // single (admin detail)
+
 
 // ============================================================
 // PROTECTED ROUTES (require authentication)
@@ -378,7 +380,6 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
         Route::get('/latest', [EventController::class, 'latestEvent']); // optional admin latest
         Route::get('/dropdown-data', [EventController::class, 'getDropdownData']);
         Route::get('/count', [EventController::class, 'countEvents']);
-        Route::get('/{event_id}', [EventController::class, 'show']);  // single (admin detail)
         Route::post('/', [EventController::class, 'store']);
         Route::post('/{event_id}/update', [EventController::class, 'update']);
         Route::delete('/{event_id}', [EventController::class, 'destroy']);

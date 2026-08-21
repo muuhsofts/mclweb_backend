@@ -45,19 +45,21 @@ class EventController extends Controller
         }
     }
 
-    public function show($event_id)
+ public function show($event_id)
 {
-    // Debug: log the received ID
-    \Log::info('Received event_id: ' . $event_id);
+    // Debug: log the ID and the query
+    \Log::info('Event show called with ID: ' . $event_id);
 
     try {
-        $event = Event::with('contentBlocks')->find($event_id);
+        // Explicitly use where() to avoid primary key confusion
+        $event = Event::where('event_id', $event_id)->with('contentBlocks')->first();
 
-        \Log::info('Found event: ' . ($event ? 'YES' : 'NO'));
+        \Log::info('Event found: ' . ($event ? 'YES' : 'NO'));
 
         if (!$event) {
             return response()->json(['message' => 'Event not found'], 404);
         }
+
         return response()->json(['event' => $event], 200);
     } catch (Exception $e) {
         \Log::error('Error in show: ' . $e->getMessage());

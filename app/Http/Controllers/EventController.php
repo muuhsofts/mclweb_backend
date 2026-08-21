@@ -46,18 +46,24 @@ class EventController extends Controller
     }
 
     public function show($event_id)
-    {
-        try {
-            $event = Event::with('contentBlocks')->find($event_id);
-            if (!$event) {
-                return response()->json(['message' => 'Event not found'], 404);
-            }
-            return response()->json(['event' => $event], 200);
-        } catch (Exception $e) {
-            Log::error('Error fetching event: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch event.'], 500);
+{
+    // Debug: log the received ID
+    \Log::info('Received event_id: ' . $event_id);
+
+    try {
+        $event = Event::with('contentBlocks')->find($event_id);
+
+        \Log::info('Found event: ' . ($event ? 'YES' : 'NO'));
+
+        if (!$event) {
+            return response()->json(['message' => 'Event not found'], 404);
         }
+        return response()->json(['event' => $event], 200);
+    } catch (Exception $e) {
+        \Log::error('Error in show: ' . $e->getMessage());
+        return response()->json(['error' => 'Failed to fetch event.'], 500);
     }
+}
 
     public function latestEvent()
     {

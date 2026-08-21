@@ -5,9 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\Event;
 use App\Models\EventContentBlock;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 use Exception;
 
 class EventController extends Controller
@@ -15,99 +15,91 @@ class EventController extends Controller
     public function __construct()
     {
         $this->middleware('auth:sanctum')->except([
-            'index', 'show', 'latestEvent', 'allEvents', 'countEvents'
+            'index', 'show', 'latestEvent', 'allEvents', 'countEvents',
         ]);
     }
 
-    private function uploadFile($file, $directory = 'uploads/events')
-    {
-        $path = public_path($directory);
-        if (!File::exists($path)) {
-            File::makeDirectory($path, 0755, true);
-        }
-        $name = time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $file->getClientOriginalName());
-        $file->move($path, $name);
-        return $directory . '/' . $name;
-    }
-
-    // ---------- PUBLIC ----------
+    // ============================================================
+    // PUBLIC
+    // ============================================================
 
     public function index()
     {
-        try {
+        return $this->safeCall(function () {
             $events = Event::with('contentBlocks')
                 ->orderBy('event_id', 'desc')
                 ->get();
+
             return response()->json(['events' => $events], 200);
-        } catch (Exception $e) {
-            Log::error('Error fetching events: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch events.'], 500);
-        }
+        }, 'Failed to fetch events.');
     }
 
- public function show($event_id)
-{
-    // Debug: log the ID and the query
-    \Log::info('Event show called with ID: ' . $event_id);
+    public function show($event_id)
+    {
+        return $this->safeCall(function () use ($event_id) {
+            $event = Event::with('contentBlocks')
+                ->where('event_id', (int) $event_id)
+                ->first();
 
-    try {
-        // Explicitly use where() to avoid primary key confusion
-        $event = Event::where('event_id', $event_id)->with('contentBlocks')->first();
+            if (!$event) {
+                Log::info("Event not found for event_id={$event_id}");
+                return response()->json(['message' => 'Event not found'], 404);
+            }
 
-        \Log::info('Event found: ' . ($event ? 'YES' : 'NO'));
-
-        if (!$event) {
-            return response()->json(['message' => 'Event not found'], 404);
-        }
-
-        return response()->json(['event' => $event], 200);
-    } catch (Exception $e) {
-        \Log::error('Error in show: ' . $e->getMessage());
-        return response()->json(['error' => 'Failed to fetch event.'], 500);
+            return response()->json(['event' => $event], 200);
+        }, 'Failed to fetch event.');
     }
-}
 
     public function latestEvent()
     {
-        try {
+        return $this->safeCall(function () {
             $event = Event::with('contentBlocks')
                 ->orderBy('created_at', 'desc')
                 ->first();
+
             if (!$event) {
                 return response()->json(['message' => 'No event found'], 404);
             }
+
             return response()->json(['event' => $event], 200);
-        } catch (Exception $e) {
-            Log::error('Error fetching latest event: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch latest event.'], 500);
-        }
+        }, 'Failed to fetch latest event.');
     }
 
     public function allEvents()
     {
-        try {
+        return $this->safeCall(function () {
             $events = Event::with('contentBlocks')
                 ->orderBy('event_id', 'asc')
                 ->get();
+
             return response()->json(['events' => $events], 200);
-        } catch (Exception $e) {
-            Log::error('Error fetching all events: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch all events.'], 500);
-        }
+        }, 'Failed to fetch all events.');
     }
 
     public function countEvents()
     {
-        try {
-            $count = Event::count();
-            return response()->json(['count_events' => $count], 200);
-        } catch (Exception $e) {
-            Log::error('Error counting events: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to count events.'], 500);
-        }
+        return $this->safeCall(function () {
+            return response()->json(['count_events' => Event::count()], 200);
+        }, 'Failed to count events.');
     }
 
-    // ---------- PROTECTED ----------
+    /**
+     * Lightweight list for admin dropdowns: id + title only.
+     * (Route existed in api.php but was missing from the controller.)
+     */
+    public function getDropdownData()
+    {
+        return $this->safeCall(function () {
+            $events = Event::orderBy('event_id', 'desc')
+                ->get(['event_id', 'title']);
+
+            return response()->json(['events' => $events], 200);
+        }, 'Failed to fetch event dropdown data.');
+    }
+
+    // ============================================================
+    // PROTECTED
+    // ============================================================
 
     public function store(Request $request)
     {
@@ -123,72 +115,77 @@ class EventController extends Controller
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
-        $data = $validator->validated();
+        return $this->safeCall(function () use ($request, $validator) {
+            $data = $validator->validated();
+            unset($data['blocks']);
 
-        if ($request->hasFile('featured_image')) {
-            $data['featured_image'] = $this->uploadFile($request->file('featured_image'), 'uploads/events/featured');
-        }
+            if ($request->hasFile('featured_image')) {
+                $data['featured_image'] = $this->uploadFile(
+                    $request->file('featured_image'),
+                    'uploads/events/featured'
+                );
+            }
 
-        if (isset($data['status']) && $data['status'] === 'published' && empty($data['published_at'])) {
-            $data['published_at'] = now();
-        }
+            if (($data['status'] ?? null) === 'published' && empty($data['published_at'])) {
+                $data['published_at'] = now();
+            }
 
-        unset($data['blocks']);
+            $event = Event::create($data);
 
-        $event = Event::create($data);
+            $blocks = json_decode($request->input('blocks', '[]'), true);
+            if (is_array($blocks) && count($blocks) > 0) {
+                $this->syncBlocks($event, $blocks, $request);
+            }
 
-        $blocks = json_decode($request->input('blocks', '[]'), true);
-        if (is_array($blocks) && count($blocks) > 0) {
-            $this->syncBlocks($event, $blocks, $request);
-        }
+            Log::info('Event created', ['event_id' => $event->event_id, 'blocks' => count($blocks ?? [])]);
 
-        Log::info('Event created', ['event_id' => $event->event_id, 'blocks' => count($blocks ?? [])]);
-
-        return response()->json([
-            'message' => 'Event created successfully',
-            'event'   => $event->load('contentBlocks')
-        ], 201);
+            return response()->json([
+                'message' => 'Event created successfully',
+                'event'   => $event->load('contentBlocks'),
+            ], 201);
+        }, 'Failed to create event.');
     }
 
     public function update(Request $request, $event_id)
     {
-        try {
-            $event = Event::find($event_id);
-            if (!$event) {
-                return response()->json(['message' => 'Event not found'], 404);
-            }
+        $event = Event::where('event_id', (int) $event_id)->first();
+        if (!$event) {
+            return response()->json(['message' => 'Event not found'], 404);
+        }
 
-            $validator = Validator::make($request->all(), [
-                'title'          => 'sometimes|required|string|max:255',
-                'featured_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:5120',
-                'status'         => 'nullable|in:draft,published',
-                'published_at'   => 'nullable|date',
-                'remove_featured' => 'nullable|boolean',
-                'blocks'         => 'nullable|json',
-            ]);
+        $validator = Validator::make($request->all(), [
+            'title'           => 'sometimes|required|string|max:255',
+            'featured_image'  => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:5120',
+            'status'          => 'nullable|in:draft,published',
+            'published_at'    => 'nullable|date',
+            'remove_featured' => 'nullable|boolean',
+            'blocks'          => 'nullable|json',
+        ]);
 
-            if ($validator->fails()) {
-                return response()->json(['errors' => $validator->errors()], 422);
-            }
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
 
+        return $this->safeCall(function () use ($request, $event, $validator) {
             $data = $validator->validated();
             unset($data['blocks']);
 
             if ($request->boolean('remove_featured') && $event->featured_image) {
-                if (File::exists(public_path($event->featured_image))) {
-                    File::delete(public_path($event->featured_image));
-                }
+                $this->deleteStoredFile($event->featured_image);
                 $data['featured_image'] = null;
             }
 
             if ($request->hasFile('featured_image')) {
-                if ($event->featured_image && File::exists(public_path($event->featured_image))) {
-                    File::delete(public_path($event->featured_image));
+                if ($event->featured_image) {
+                    $this->deleteStoredFile($event->featured_image);
                 }
-                $data['featured_image'] = $this->uploadFile($request->file('featured_image'), 'uploads/events/featured');
+                $data['featured_image'] = $this->uploadFile(
+                    $request->file('featured_image'),
+                    'uploads/events/featured'
+                );
             }
 
-            if (isset($data['status']) && $data['status'] === 'published' && empty($data['published_at'])) {
+            if (($data['status'] ?? null) === 'published' && empty($data['published_at'])) {
                 $data['published_at'] = now();
             }
 
@@ -203,19 +200,77 @@ class EventController extends Controller
 
             return response()->json([
                 'message' => 'Event updated successfully',
-                'event'   => $event->load('contentBlocks')
+                'event'   => $event->load('contentBlocks'),
             ], 200);
+        }, 'Failed to update event.');
+    }
 
+    public function destroy($event_id)
+    {
+        $event = Event::where('event_id', (int) $event_id)->first();
+        if (!$event) {
+            return response()->json(['message' => 'Event not found'], 404);
+        }
+
+        return $this->safeCall(function () use ($event, $event_id) {
+            if ($event->featured_image) {
+                $this->deleteStoredFile($event->featured_image);
+            }
+
+            foreach ($event->contentBlocks as $block) {
+                $this->deleteBlockFiles($block);
+            }
+
+            $event->delete();
+
+            Log::info('Event deleted', ['event_id' => $event_id]);
+
+            return response()->json(['message' => 'Event deleted successfully'], 200);
+        }, 'Failed to delete event.');
+    }
+
+    // ============================================================
+    // INTERNAL HELPERS
+    // ============================================================
+
+    /**
+     * Runs $callback, converting any exception into a consistent
+     * JSON error response and logging the trace.
+     */
+    private function safeCall(callable $callback, string $errorMessage)
+    {
+        try {
+            return $callback();
         } catch (Exception $e) {
-            Log::error('Update failed: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            Log::error($errorMessage . ' ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             return response()->json([
-                'error'  => 'Failed to update event.',
-                'detail' => $e->getMessage()
+                'error'  => $errorMessage,
+                'detail' => $e->getMessage(),
             ], 500);
         }
     }
 
-    private function syncBlocks($event, array $blocks, Request $request)
+    private function uploadFile($file, string $directory = 'uploads/events'): string
+    {
+        $path = public_path($directory);
+        if (!File::exists($path)) {
+            File::makeDirectory($path, 0755, true);
+        }
+
+        $name = time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $file->getClientOriginalName());
+        $file->move($path, $name);
+
+        return $directory . '/' . $name;
+    }
+
+    private function deleteStoredFile(?string $relativePath): void
+    {
+        if ($relativePath && File::exists(public_path($relativePath))) {
+            File::delete(public_path($relativePath));
+        }
+    }
+
+    private function syncBlocks(Event $event, array $blocks, Request $request): void
     {
         foreach ($event->contentBlocks as $block) {
             $this->deleteBlockFiles($block);
@@ -223,8 +278,8 @@ class EventController extends Controller
         }
 
         $allBlockImages = $request->file('block_images') ?? [];
-
         $order = 0;
+
         foreach ($blocks as $index => $blockData) {
             $imagePaths = [];
 
@@ -252,7 +307,7 @@ class EventController extends Controller
 
             $imagePaths = array_values(array_unique(array_filter($imagePaths)));
 
-            $fields = [
+            EventContentBlock::create([
                 'event_id'    => $event->event_id,
                 'type'        => 'mixed',
                 'block_order' => $order++,
@@ -260,49 +315,20 @@ class EventController extends Controller
                 'url'         => !empty($blockData['url']) ? trim($blockData['url']) : null,
                 'caption'     => $blockData['caption'] ?? null,
                 'image_paths' => !empty($imagePaths) ? $imagePaths : null,
-            ];
-
-            EventContentBlock::create($fields);
+            ]);
         }
     }
 
-    private function deleteBlockFiles($block)
+    private function deleteBlockFiles($block): void
     {
         if ($block->image_paths && is_array($block->image_paths)) {
             foreach ($block->image_paths as $path) {
-                if ($path && File::exists(public_path($path))) {
-                    File::delete(public_path($path));
-                }
+                $this->deleteStoredFile($path);
             }
         }
-        if ($block->image_path && File::exists(public_path($block->image_path))) {
-            File::delete(public_path($block->image_path));
-        }
-    }
 
-    public function destroy($event_id)
-    {
-        try {
-            $event = Event::find($event_id);
-            if (!$event) {
-                return response()->json(['message' => 'Event not found'], 404);
-            }
-
-            if ($event->featured_image && File::exists(public_path($event->featured_image))) {
-                File::delete(public_path($event->featured_image));
-            }
-
-            foreach ($event->contentBlocks as $block) {
-                $this->deleteBlockFiles($block);
-            }
-
-            $event->delete();
-
-            Log::info('Event deleted', ['event_id' => $event_id]);
-            return response()->json(['message' => 'Event deleted successfully'], 200);
-        } catch (Exception $e) {
-            Log::error('Delete failed: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to delete event.'], 500);
+        if (!empty($block->image_path)) {
+            $this->deleteStoredFile($block->image_path);
         }
     }
 }

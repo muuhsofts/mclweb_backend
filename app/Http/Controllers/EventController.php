@@ -108,7 +108,6 @@ class EventController extends Controller
             'featured_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:5120',
             'status'         => 'nullable|in:draft,published',
             'published_at'   => 'nullable|date',
-            'location'       => 'nullable|string|max:255',
             'blocks'         => 'nullable|json',
         ]);
 
@@ -156,7 +155,6 @@ class EventController extends Controller
                 'featured_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:5120',
                 'status'         => 'nullable|in:draft,published',
                 'published_at'   => 'nullable|date',
-                'location'       => 'nullable|string|max:255',
                 'remove_featured' => 'nullable|boolean',
                 'blocks'         => 'nullable|json',
             ]);

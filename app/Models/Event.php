@@ -19,8 +19,7 @@ class Event extends Model
         'featured_image',
         'status',
         'published_at',
-        'location',
-        // legacy fields (keep if needed)
+        // legacy fields (kept for compatibility)
         'description',
         'img_file',
         'video_link',

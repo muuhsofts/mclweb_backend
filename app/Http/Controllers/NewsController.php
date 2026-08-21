@@ -15,25 +15,22 @@ class NewsController extends Controller
     public function __construct()
     {
         $this->middleware('auth:sanctum')->except([
-            'index', 'show', 'latestnew', 'allNews', 'newsByid'
+            'index', 'show', 'latestnew', 'allNews', 'newsByid', 'countNews'
         ]);
     }
 
-    /**
-     * Upload helper for images (featured or block images)
-     */
     private function uploadImage($file, $directory = 'uploads/featured')
     {
         $path = public_path($directory);
         if (!File::exists($path)) {
             File::makeDirectory($path, 0755, true);
         }
-        $name = time() . '_' . $file->getClientOriginalName();
+        $name = time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $file->getClientOriginalName());
         $file->move($path, $name);
         return $directory . '/' . $name;
     }
 
-    // ---------- PUBLIC ENDPOINTS ----------
+    // ---------- PUBLIC ----------
 
     public function index()
     {
@@ -90,9 +87,6 @@ class NewsController extends Controller
         return $this->show($news_id);
     }
 
-    /**
-     * Get the total count of news records.
-     */
     public function countNews()
     {
         try {
@@ -104,13 +98,13 @@ class NewsController extends Controller
         }
     }
 
-    // ---------- PROTECTED (AUTH) ENDPOINTS ----------
+    // ---------- PROTECTED ----------
 
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
             'title'          => 'required|string|max:255',
-            'featured_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:2048',
+            'featured_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:5120',
             'status'         => 'nullable|in:draft,published',
             'published_at'   => 'nullable|date',
             'blocks'         => 'nullable|json',
@@ -130,14 +124,17 @@ class NewsController extends Controller
             $data['published_at'] = now();
         }
 
+        // Remove blocks from mass-assignment data
+        unset($data['blocks']);
+
         $news = News::create($data);
 
-        $blocks = json_decode($data['blocks'] ?? '[]', true);
-        if (is_array($blocks) && !empty($blocks)) {
+        $blocks = json_decode($request->input('blocks', '[]'), true);
+        if (is_array($blocks) && count($blocks) > 0) {
             $this->syncBlocks($news, $blocks, $request);
         }
 
-        Log::info('News created', ['news_id' => $news->news_id, 'blocks' => count($blocks)]);
+        Log::info('News created', ['news_id' => $news->news_id, 'blocks' => count($blocks ?? [])]);
 
         return response()->json([
             'message' => 'News created successfully',
@@ -154,12 +151,12 @@ class NewsController extends Controller
             }
 
             $validator = Validator::make($request->all(), [
-                'title'          => 'sometimes|required|string|max:255',
-                'featured_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:2048',
-                'status'         => 'nullable|in:draft,published',
-                'published_at'   => 'nullable|date',
+                'title'           => 'sometimes|required|string|max:255',
+                'featured_image'  => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:5120',
+                'status'          => 'nullable|in:draft,published',
+                'published_at'    => 'nullable|date',
                 'remove_featured' => 'nullable|boolean',
-                'blocks'         => 'nullable|json',
+                'blocks'          => 'nullable|json',
             ]);
 
             if ($validator->fails()) {
@@ -167,9 +164,9 @@ class NewsController extends Controller
             }
 
             $data = $validator->validated();
+            unset($data['blocks']);
 
-            // Featured image handling
-            if ($request->input('remove_featured', false) && $news->featured_image) {
+            if ($request->boolean('remove_featured') && $news->featured_image) {
                 if (File::exists(public_path($news->featured_image))) {
                     File::delete(public_path($news->featured_image));
                 }
@@ -189,8 +186,8 @@ class NewsController extends Controller
 
             $news->fill($data)->save();
 
-            $blocks = json_decode($data['blocks'] ?? '[]', true);
-            if (is_array($blocks) && !empty($blocks)) {
+            $blocks = json_decode($request->input('blocks', '[]'), true);
+            if (is_array($blocks)) {
                 $this->syncBlocks($news, $blocks, $request);
             }
 
@@ -204,54 +201,87 @@ class NewsController extends Controller
         } catch (Exception $e) {
             Log::error('Update failed: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             return response()->json([
-                'error' => 'Failed to update news.',
-                'detail' => $e->getMessage() // temporarily for debugging – remove in production
+                'error'  => 'Failed to update news.',
+                'detail' => $e->getMessage()
             ], 500);
         }
     }
 
     /**
- * Synchronise content blocks – replaces all blocks with the new set.
- */
-private function syncBlocks($news, $blocks, $request)
-{
-    // Delete all existing blocks and their files
-    foreach ($news->contentBlocks as $block) {
-        $this->deleteBlockFiles($block);
-        $block->delete();
-    }
-
-    $order = 0;
-    foreach ($blocks as $blockData) {
-        $fields = [
-            'block_order' => $order++,
-            'type'        => $blockData['type'] ?? 'text',
-            'content'     => $blockData['content'] ?? null,
-            'caption'     => $blockData['caption'] ?? null,
-        ];
-
-        if (isset($blockData['type']) && $blockData['type'] === 'image') {
-            $index = $order - 1;
-            if ($request->hasFile("block_images.{$index}")) {
-                $file = $request->file("block_images.{$index}");
-                $fields['image_path'] = $this->uploadImage($file, 'uploads/blocks');
-            } elseif (isset($blockData['image_path'])) {
-                $fields['image_path'] = $blockData['image_path'];
-            }
+     * Replace all content blocks. Supports:
+     * - text (content)
+     * - single url
+     * - multiple images (new uploads via block_images[index][] + existing paths)
+     * - caption
+     */
+    private function syncBlocks($news, array $blocks, Request $request)
+    {
+        // 1. Delete old blocks + their files
+        foreach ($news->contentBlocks as $block) {
+            $this->deleteBlockFiles($block);
+            $block->delete();
         }
 
-        $block = new ContentBlock($fields);
-        $block->news_id = $news->news_id;
-        $block->save();
-    }
-}
+        // 2. Get all uploaded block images at once (robust)
+        $allBlockImages = $request->file('block_images') ?? [];
 
-   
-    /**
-     * Delete files attached to a content block
-     */
+        $order = 0;
+        foreach ($blocks as $index => $blockData) {
+            $imagePaths = [];
+
+            // A. New uploads for this block index
+            $files = $allBlockImages[$index] ?? [];
+            if (!is_array($files)) {
+                $files = $files ? [$files] : [];
+            }
+            foreach ($files as $file) {
+                if ($file && $file->isValid()) {
+                    $imagePaths[] = $this->uploadImage($file, 'uploads/blocks');
+                }
+            }
+
+            // B. Keep existing paths that frontend still wants
+            if (!empty($blockData['image_paths']) && is_array($blockData['image_paths'])) {
+                foreach ($blockData['image_paths'] as $path) {
+                    if ($path && is_string($path)) {
+                        $imagePaths[] = $path;
+                    }
+                }
+            }
+
+            // C. Backward-compat single image_path
+            if (empty($imagePaths) && !empty($blockData['image_path'])) {
+                $imagePaths[] = $blockData['image_path'];
+            }
+
+            // D. Deduplicate & clean
+            $imagePaths = array_values(array_unique(array_filter($imagePaths)));
+
+            $fields = [
+                'news_id'     => $news->news_id,
+                'type'        => 'mixed',
+                'block_order' => $order++,
+                'content'     => $blockData['content'] ?? null,
+                'url'         => !empty($blockData['url']) ? trim($blockData['url']) : null,
+                'caption'     => $blockData['caption'] ?? null,
+                'image_paths' => !empty($imagePaths) ? $imagePaths : null,
+                // keep old column null
+                'image_path'  => null,
+            ];
+
+            ContentBlock::create($fields);
+        }
+    }
+
     private function deleteBlockFiles($block)
     {
+        if ($block->image_paths && is_array($block->image_paths)) {
+            foreach ($block->image_paths as $path) {
+                if ($path && File::exists(public_path($path))) {
+                    File::delete(public_path($path));
+                }
+            }
+        }
         if ($block->image_path && File::exists(public_path($block->image_path))) {
             File::delete(public_path($block->image_path));
         }
@@ -276,7 +306,6 @@ private function syncBlocks($news, $blocks, $request)
             $news->delete();
 
             Log::info('News deleted', ['news_id' => $news_id]);
-
             return response()->json(['message' => 'News deleted successfully'], 200);
         } catch (Exception $e) {
             Log::error('Delete failed: ' . $e->getMessage());
@@ -284,13 +313,10 @@ private function syncBlocks($news, $blocks, $request)
         }
     }
 
-    /**
-     * Upload an image for a content block (standalone)
-     */
     public function uploadBlockImage(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'image' => 'required|file|mimes:jpeg,png,jpg,gif,webp|max:2048',
+            'image' => 'required|file|mimes:jpeg,png,jpg,gif,webp|max:5120',
         ]);
 
         if ($validator->fails()) {

@@ -3,59 +3,41 @@
 namespace App\Http\Controllers;
 
 use App\Models\Event;
+use App\Models\EventContentBlock;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 use Exception;
 
 class EventController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('auth:sanctum')->except(['index', 'show', 'latestEvent', 'allEvents']);
+        // Public: index, show, latestEvent, allEvents
+        // Protected: store, update, destroy, etc.
+        $this->middleware('auth:sanctum')->except([
+            'index', 'show', 'latestEvent', 'allEvents', 'countEvents'
+        ]);
     }
 
-    /**
-     * Helper: Upload a file and return relative path.
-     */
     private function uploadFile($file, $directory = 'uploads/events')
     {
-        $uploadPath = public_path($directory);
-        if (!File::exists($uploadPath)) {
-            File::makeDirectory($uploadPath, 0755, true);
+        $path = public_path($directory);
+        if (!File::exists($path)) {
+            File::makeDirectory($path, 0755, true);
         }
-        $fileName = time() . '_' . $file->getClientOriginalName();
-        $file->move($uploadPath, $fileName);
-        return $directory . '/' . $fileName;
+        $name = time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $file->getClientOriginalName());
+        $file->move($path, $name);
+        return $directory . '/' . $name;
     }
 
-    /**
-     * Get validation rules (with new JSON fields).
-     */
-    private function getValidationRules()
-    {
-        return [
-            'event_category' => 'required|string|max:255',
-            'description'    => 'nullable|string',
-            'img_file'       => 'nullable|file|mimes:jpeg,png,jpg,gif|max:2048', // legacy single image
-            'video_link'     => 'nullable|url',                                  // legacy single video
-            'images.*'       => 'nullable|file|mimes:jpeg,png,jpg,gif|max:2048', // multiple images
-            'video_links'    => 'nullable|array',
-            'video_links.*'  => 'nullable|url|max:500',
-        ];
-    }
+    // ---------- PUBLIC ----------
 
-    private function getSelectableFields()
-    {
-        return ['event_id', 'event_category', 'description', 'img_file', 'video_link', 'images', 'video_links', 'created_at', 'updated_at'];
-    }
-
-    // ---------- Public endpoints ----------
     public function index()
     {
         try {
-            $events = Event::select($this->getSelectableFields())
+            $events = Event::with('contentBlocks')
                 ->orderBy('event_id', 'desc')
                 ->get();
             return response()->json(['events' => $events], 200);
@@ -65,10 +47,40 @@ class EventController extends Controller
         }
     }
 
+    public function show($event_id)
+    {
+        try {
+            $event = Event::with('contentBlocks')->find($event_id);
+            if (!$event) {
+                return response()->json(['message' => 'Event not found'], 404);
+            }
+            return response()->json(['event' => $event], 200);
+        } catch (Exception $e) {
+            Log::error('Error fetching event: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to fetch event.'], 500);
+        }
+    }
+
+    public function latestEvent()
+    {
+        try {
+            $event = Event::with('contentBlocks')
+                ->orderBy('created_at', 'desc')
+                ->first();
+            if (!$event) {
+                return response()->json(['message' => 'No event found'], 404);
+            }
+            return response()->json(['event' => $event], 200);
+        } catch (Exception $e) {
+            Log::error('Error fetching latest event: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to fetch latest event.'], 500);
+        }
+    }
+
     public function allEvents()
     {
         try {
-            $events = Event::select($this->getSelectableFields())
+            $events = Event::with('contentBlocks')
                 ->orderBy('event_id', 'asc')
                 ->get();
             return response()->json(['events' => $events], 200);
@@ -89,173 +101,189 @@ class EventController extends Controller
         }
     }
 
-   public function latestEvent()
-{
-    try {
-        $latest = Event::select($this->getSelectableFields())
-            ->orderBy('event_id', 'desc')   // ← change to 'event_id'
-            ->first();
+    // ---------- PROTECTED ----------
 
-        if (!$latest) {
-            return response()->json(['message' => 'No event found'], 404);
-        }
-
-        return response()->json(['event' => $latest], 200);
-    } catch (Exception $e) {
-        Log::error('Error fetching latest event: ' . $e->getMessage());
-        return response()->json(['error' => 'Failed to fetch latest event.'], 500);
-    }
-}
-
-    public function show($event_id)
-    {
-        try {
-            $event = Event::select($this->getSelectableFields())->find($event_id);
-            if (!$event) {
-                return response()->json(['message' => 'Event not found'], 404);
-            }
-            return response()->json(['event' => $event], 200);
-        } catch (Exception $e) {
-            Log::error('Error fetching event: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch event.'], 500);
-        }
-    }
-
-    public function getDropdownData()
-    {
-        try {
-            $categories = Event::select('event_category')
-                ->distinct()
-                ->pluck('event_category')
-                ->values();
-            $events = Event::select('event_id', 'event_category')
-                ->orderBy('event_id', 'asc')
-                ->get()
-                ->map(fn($e) => ['event_id' => $e->event_id, 'event_category' => $e->event_category]);
-            return response()->json(['categories' => $categories, 'events' => $events], 200);
-        } catch (Exception $e) {
-            Log::error('Error fetching dropdown data: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch dropdown data.'], 500);
-        }
-    }
-
-    // ---------- Protected endpoints ----------
     public function store(Request $request)
     {
-        $validator = Validator::make($request->all(), $this->getValidationRules());
+        $validator = Validator::make($request->all(), [
+            'event_category' => 'required|string|max:255',
+            'title'          => 'required|string|max:255',
+            'featured_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:5120',
+            'status'         => 'nullable|in:draft,published',
+            'published_at'   => 'nullable|date',
+            'blocks'         => 'nullable|json',
+        ]);
+
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
-        try {
-            $data = $validator->validated();
+        $data = $validator->validated();
 
-            // Sanitize description (HTML)
-            $data['description'] = clean($data['description'] ?? '');
-
-            // Handle legacy single image
-            if ($request->hasFile('img_file') && $request->file('img_file')->isValid()) {
-                $data['img_file'] = $this->uploadFile($request->file('img_file'));
-            }
-
-            // Handle legacy single video link (if provided)
-            // (no change needed, it's stored as is)
-
-            // Handle multiple images
-            $imagePaths = [];
-            if ($request->hasFile('images')) {
-                foreach ($request->file('images') as $image) {
-                    if ($image->isValid()) {
-                        $imagePaths[] = $this->uploadFile($image);
-                    }
-                }
-            }
-            $data['images'] = $imagePaths;
-
-            // Handle multiple video links (array from frontend)
-            $data['video_links'] = $data['video_links'] ?? [];
-
-            $event = Event::create($data);
-            return response()->json(['message' => 'Event created successfully', 'event' => $event], 201);
-        } catch (Exception $e) {
-            Log::error('Error creating event: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to create event.'], 500);
+        if ($request->hasFile('featured_image')) {
+            $data['featured_image'] = $this->uploadFile($request->file('featured_image'), 'uploads/events/featured');
         }
+
+        if (isset($data['status']) && $data['status'] === 'published' && empty($data['published_at'])) {
+            $data['published_at'] = now();
+        }
+
+        // Remove blocks from mass-assignment
+        unset($data['blocks']);
+
+        $event = Event::create($data);
+
+        $blocks = json_decode($request->input('blocks', '[]'), true);
+        if (is_array($blocks) && count($blocks) > 0) {
+            $this->syncBlocks($event, $blocks, $request);
+        }
+
+        Log::info('Event created', ['event_id' => $event->event_id, 'blocks' => count($blocks ?? [])]);
+
+        return response()->json([
+            'message' => 'Event created successfully',
+            'event'   => $event->load('contentBlocks')
+        ], 201);
     }
 
     public function update(Request $request, $event_id)
     {
-        $event = Event::find($event_id);
-        if (!$event) {
-            return response()->json(['message' => 'Event not found'], 404);
-        }
-
-        $validator = Validator::make($request->all(), $this->getValidationRules());
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-
         try {
+            $event = Event::find($event_id);
+            if (!$event) {
+                return response()->json(['message' => 'Event not found'], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'event_category' => 'sometimes|required|string|max:255',
+                'title'          => 'sometimes|required|string|max:255',
+                'featured_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:5120',
+                'status'         => 'nullable|in:draft,published',
+                'published_at'   => 'nullable|date',
+                'remove_featured' => 'nullable|boolean',
+                'blocks'         => 'nullable|json',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json(['errors' => $validator->errors()], 422);
+            }
+
             $data = $validator->validated();
+            unset($data['blocks']);
 
-            // Sanitize description
-            $data['description'] = clean($data['description'] ?? '');
-
-            // ---- Legacy single image ----
-            if ($request->hasFile('img_file') && $request->file('img_file')->isValid()) {
-                if ($event->img_file && File::exists(public_path($event->img_file))) {
-                    File::delete(public_path($event->img_file));
+            if ($request->boolean('remove_featured') && $event->featured_image) {
+                if (File::exists(public_path($event->featured_image))) {
+                    File::delete(public_path($event->featured_image));
                 }
-                $data['img_file'] = $this->uploadFile($request->file('img_file'));
-            } else {
-                $data['img_file'] = $event->img_file; // keep existing
+                $data['featured_image'] = null;
             }
 
-            // ---- Legacy single video link ----
-            if ($request->filled('video_link')) {
-                $data['video_link'] = $data['video_link'];
-            } else {
-                $data['video_link'] = $event->video_link;
-            }
-
-            // ---- Multiple images (JSON array) ----
-            $existingImages = $event->images ?? [];
-
-            // Remove images by index (if provided)
-            if ($request->has('remove_image_indices')) {
-                $indicesToRemove = $request->input('remove_image_indices');
-                foreach ($indicesToRemove as $index) {
-                    if (isset($existingImages[$index]) && File::exists(public_path($existingImages[$index]))) {
-                        File::delete(public_path($existingImages[$index]));
-                    }
-                    unset($existingImages[$index]);
+            if ($request->hasFile('featured_image')) {
+                if ($event->featured_image && File::exists(public_path($event->featured_image))) {
+                    File::delete(public_path($event->featured_image));
                 }
-                $existingImages = array_values($existingImages);
+                $data['featured_image'] = $this->uploadFile($request->file('featured_image'), 'uploads/events/featured');
             }
 
-            // Add new uploaded images
-            $newImagePaths = [];
-            if ($request->hasFile('images')) {
-                foreach ($request->file('images') as $image) {
-                    if ($image->isValid()) {
-                        $newImagePaths[] = $this->uploadFile($image);
-                    }
-                }
-            }
-            $data['images'] = array_merge($existingImages, $newImagePaths);
-
-            // ---- Multiple video links (JSON array) ----
-            if ($request->has('video_links')) {
-                $data['video_links'] = $data['video_links'] ?? [];
-            } else {
-                $data['video_links'] = $event->video_links;
+            if (isset($data['status']) && $data['status'] === 'published' && empty($data['published_at'])) {
+                $data['published_at'] = now();
             }
 
             $event->fill($data)->save();
-            return response()->json(['message' => 'Event updated successfully.', 'event' => $event->fresh()], 200);
+
+            $blocks = json_decode($request->input('blocks', '[]'), true);
+            if (is_array($blocks)) {
+                $this->syncBlocks($event, $blocks, $request);
+            }
+
+            Log::info('Event updated', ['event_id' => $event->event_id]);
+
+            return response()->json([
+                'message' => 'Event updated successfully',
+                'event'   => $event->load('contentBlocks')
+            ], 200);
+
         } catch (Exception $e) {
-            Log::error('Error updating event: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to update event.'], 500);
+            Log::error('Update failed: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            return response()->json([
+                'error'  => 'Failed to update event.',
+                'detail' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Replace all content blocks (like NewsController::syncBlocks)
+     */
+    private function syncBlocks($event, array $blocks, Request $request)
+    {
+        // 1. Delete old blocks + their files
+        foreach ($event->contentBlocks as $block) {
+            $this->deleteBlockFiles($block);
+            $block->delete();
+        }
+
+        // 2. Get all uploaded block images
+        $allBlockImages = $request->file('block_images') ?? [];
+
+        $order = 0;
+        foreach ($blocks as $index => $blockData) {
+            $imagePaths = [];
+
+            // A. New uploads for this block index
+            $files = $allBlockImages[$index] ?? [];
+            if (!is_array($files)) {
+                $files = $files ? [$files] : [];
+            }
+            foreach ($files as $file) {
+                if ($file && $file->isValid()) {
+                    $imagePaths[] = $this->uploadFile($file, 'uploads/events/blocks');
+                }
+            }
+
+            // B. Keep existing paths from frontend
+            if (!empty($blockData['image_paths']) && is_array($blockData['image_paths'])) {
+                foreach ($blockData['image_paths'] as $path) {
+                    if ($path && is_string($path)) {
+                        $imagePaths[] = $path;
+                    }
+                }
+            }
+
+            // C. Backward-compat single image_path
+            if (empty($imagePaths) && !empty($blockData['image_path'])) {
+                $imagePaths[] = $blockData['image_path'];
+            }
+
+            // Deduplicate & clean
+            $imagePaths = array_values(array_unique(array_filter($imagePaths)));
+
+            $fields = [
+                'event_id'    => $event->event_id,
+                'type'        => 'mixed',
+                'block_order' => $order++,
+                'content'     => $blockData['content'] ?? null,
+                'url'         => !empty($blockData['url']) ? trim($blockData['url']) : null,
+                'caption'     => $blockData['caption'] ?? null,
+                'image_paths' => !empty($imagePaths) ? $imagePaths : null,
+            ];
+
+            EventContentBlock::create($fields);
+        }
+    }
+
+    private function deleteBlockFiles($block)
+    {
+        if ($block->image_paths && is_array($block->image_paths)) {
+            foreach ($block->image_paths as $path) {
+                if ($path && File::exists(public_path($path))) {
+                    File::delete(public_path($path));
+                }
+            }
+        }
+        // also check old image_path column (if any)
+        if ($block->image_path && File::exists(public_path($block->image_path))) {
+            File::delete(public_path($block->image_path));
         }
     }
 
@@ -267,24 +295,42 @@ class EventController extends Controller
                 return response()->json(['message' => 'Event not found'], 404);
             }
 
-            // Delete legacy image
-            if ($event->img_file && File::exists(public_path($event->img_file))) {
-                File::delete(public_path($event->img_file));
+            if ($event->featured_image && File::exists(public_path($event->featured_image))) {
+                File::delete(public_path($event->featured_image));
             }
 
-            // Delete all gallery images (from JSON array)
-            $images = $event->images ?? [];
-            foreach ($images as $path) {
-                if (File::exists(public_path($path))) {
-                    File::delete(public_path($path));
-                }
+            foreach ($event->contentBlocks as $block) {
+                $this->deleteBlockFiles($block);
             }
 
             $event->delete();
+
+            Log::info('Event deleted', ['event_id' => $event_id]);
             return response()->json(['message' => 'Event deleted successfully'], 200);
         } catch (Exception $e) {
-            Log::error('Error deleting event: ' . $e->getMessage());
+            Log::error('Delete failed: ' . $e->getMessage());
             return response()->json(['error' => 'Failed to delete event.'], 500);
         }
+    }
+
+    /**
+     * Optional: endpoint to upload a single block image (if needed)
+     */
+    public function uploadBlockImage(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'image' => 'required|file|mimes:jpeg,png,jpg,gif,webp|max:5120',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        $path = $this->uploadFile($request->file('image'), 'uploads/events/blocks');
+
+        return response()->json([
+            'location' => asset($path),
+            'path'     => $path,
+        ], 200);
     }
 }

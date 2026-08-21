@@ -27,7 +27,7 @@ use App\Http\Controllers\NewsController;
 use App\Http\Controllers\Pink130HomeController;
 use App\Http\Controllers\Pink130Controller;
 use App\Http\Controllers\OurStandardHomeController;
-use  App\Http\Controllers\ServicesHomeController;
+use App\Http\Controllers\ServicesHomeController;
 use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\NewsHomeController;
 use App\Http\Controllers\API\SubNewsController;
@@ -55,19 +55,22 @@ use App\Http\Controllers\AboutMwananchiController;
 use App\Http\Controllers\SubEventController;
 use App\Http\Controllers\SubscriptionController;
 
-// Public Routes
+// ============================================================
+// PUBLIC ROUTES (no authentication required)
+// ============================================================
+
 Route::get('/login', function () {
     return response()->json(['message' => 'Unauthorized user! Please login to access the API'], 401);
 })->name('login');
 
-// Authentication Routes
+// Auth
 Route::post('/auth/add-user', [AuthController::class, 'register']);
 Route::post('/auth/login', [AuthController::class, 'login']);
 Route::post('/auth/logout', [AuthController::class, 'logout']);
 Route::post('/auth/request-reset', [PasswordResetController::class, 'requestPasswordReset']);
 Route::post('/auth/password-reset', [PasswordResetController::class, 'resetPassword']);
 
-// Public Slider & Data Endpoints
+// Sliders & data endpoints
 Route::get('/slider-imgs', [AboutController::class, 'AboutSliders']);
 Route::get('/homeSliders', [CompanyController::class, 'homeSliders']);
 Route::get('/leadershipHomeSlider', [LeadershipHomeController::class, 'leadershipHomeSlider']);
@@ -118,23 +121,27 @@ Route::get('/stay-connected/all', [StayConnectedController::class, 'allStayConne
 Route::get('/latestEarlyCareer', [EarlyCareersController::class, 'latestEarlyCareer']);
 Route::get('/allBrands', [BrandController::class, 'allBrands']);
 Route::get('/latestService', [ServicesHomeController::class, 'latestService']);
+
+// ---- Events - Public ----
 Route::get('/all-events', [EventController::class, 'allEvents']);
 Route::get('/latestEvent', [EventController::class, 'latestEvent']);
+
 Route::get('/about-mwananchi/all', [AboutMwananchiController::class, 'allRecords']);
 Route::get('/all/sub-events', [SubEventController::class, 'allEvents']);
 Route::get('/allsubscriptions', [SubscriptionController::class, 'allsubscriptions']);
 Route::get('/latestbrand', [BrandController::class, 'latestbrand']);
+
+// News detail (public)
 Route::get('/readmore-news/{news_id}', [NewsController::class, 'newsByid']);
 Route::get('/news/{news_id}', [NewsController::class, 'show']);
 
+// ============================================================
+// PROTECTED ROUTES (require authentication)
+// ============================================================
 
-// ***** REMOVED obsolete news routes *****
-// Route::get('/news/category/{category}', [NewsController::class, 'getByCategory']);
-// Route::get('/news/images/all', [NewsController::class, 'getAllImages']);
-
-// Protected Routes (require authentication)
 Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
-    // User Management
+
+    // ---- User Management ----
     Route::get('/all/users', [AuthController::class, 'users']);
     Route::get('/users/byname', [AuthController::class, 'dropdownUsersByName']);
     Route::get('/users/byrole', [AuthController::class, 'dropdownUsersByRole']);
@@ -150,30 +157,30 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
     Route::get('/audit-trail', [AuthController::class, 'getAuditTrail']);
     Route::post('/store-cookies', [AuthController::class, 'storeCookies']);
 
-    // Roles
+    // ---- Roles ----
     Route::apiResource('/auth/roles', RoleController::class);
     Route::get('/count/roles', [RoleController::class, 'countRoles']);
     Route::get('/roles/dropdown-options', [RoleController::class, 'getDropdownOptions']);
 
-    // Companies
+    // ---- Companies ----
     Route::get('/companies', [CompanyController::class, 'index']);
     Route::get('/companies/{company_id}', [CompanyController::class, 'show']);
     Route::post('/companies', [CompanyController::class, 'store']);
     Route::post('/companies/{company_id}', [CompanyController::class, 'update']);
     Route::delete('/companies/{company_id}', [CompanyController::class, 'destroy']);
 
-    // Galleries
+    // ---- Galleries ----
     Route::post('/galleries', [GalleryController::class, 'store']);
     Route::post('/galleries/{id}', [GalleryController::class, 'update']);
     Route::delete('/galleries/{id}', [GalleryController::class, 'destroy']);
     Route::get('/galleries', [GalleryController::class, 'index']);
     Route::get('/galleries/{id}', [GalleryController::class, 'show']);
 
-    // Diversity & Inclusion
+    // ---- Diversity & Inclusion ----
     Route::resource('diversity-inclusion', DiversityInclusionController::class);
     Route::post('/diversity-inclusion/{diversity_id}/update', [DiversityInclusionController::class, 'update']);
 
-    // Sustainability
+    // ---- Sustainability ----
     Route::get('/sustainability', [SustainabilityController::class, 'index']);
     Route::post('/sustainability', [SustainabilityController::class, 'store']);
     Route::get('/sustainability/{sustain_id}', [SustainabilityController::class, 'show']);
@@ -190,7 +197,7 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
         Route::delete('/{sustainability_home_id}', [SustainabilityHomeController::class, 'destroy']);
     });
 
-    // Giving Back
+    // ---- Giving Back ----
     Route::get('/giving-backs', [GivingBackController::class, 'index']);
     Route::post('/giving-backs', [GivingBackController::class, 'store']);
     Route::get('/giving-backs/{giving_id}', [GivingBackController::class, 'show']);
@@ -206,14 +213,14 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
         Route::delete('/{giving_back_id}', [GivingBackHomeController::class, 'destroy']);
     });
 
-    // MCL Pink 130
+    // ---- MCL Pink 130 ----
     Route::get('/mcl-pink-130', [MclPink130Controller::class, 'index']);
     Route::post('/mcl-pink-130', [MclPink130Controller::class, 'store']);
     Route::get('/mcl-pink-130/{mcl_id}', [MclPink130Controller::class, 'show']);
     Route::post('/mcl-pink-130/{mcl_id}/update', [MclPink130Controller::class, 'update']);
     Route::delete('/mcl-pink-130/{mcl_id}', [MclPink130Controller::class, 'destroy']);
 
-    // Our Standard
+    // ---- Our Standard ----
     Route::get('/our-standard', [OurStandardController::class, 'index']);
     Route::post('/our-standard', [OurStandardController::class, 'store']);
     Route::get('/our-standard/{our_id}', [OurStandardController::class, 'show']);
@@ -238,7 +245,7 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
     Route::post('/sub-standard/{subStandard_id}/update', [SubStandardController::class, 'update']);
     Route::delete('/sub-standard/{subStandard_id}', [SubStandardController::class, 'destroy']);
 
-    // About
+    // ---- About ----
     Route::prefix('about')->group(function () {
         Route::get('/', [AboutController::class, 'index']);
         Route::post('/', [AboutController::class, 'store']);
@@ -258,7 +265,7 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
     Route::post('/about-mwananchi/{id}', [AboutMwananchiController::class, 'update']);
     Route::delete('/about-mwananchi/{id}', [AboutMwananchiController::class, 'destroy']);
 
-    // Leadership Homes
+    // ---- Leadership ----
     Route::get('/leadership-homes', [LeadershipHomeController::class, 'index']);
     Route::get('/leadership-homes/slider', [LeadershipHomeController::class, 'leadershipHomeSlider']);
     Route::get('/leadership-homes/{leadership_home_id}', [LeadershipHomeController::class, 'show']);
@@ -266,7 +273,6 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
     Route::put('/leadership-homes/{leadership_home_id}', [LeadershipHomeController::class, 'update']);
     Route::delete('/leadership-homes/{leadership_home_id}', [LeadershipHomeController::class, 'destroy']);
 
-    // Leadership
     Route::get('/leadership', [LeadershipController::class, 'index']);
     Route::get('/leadership/{leadership_id}', [LeadershipController::class, 'show']);
     Route::post('/leadership', [LeadershipController::class, 'store']);
@@ -274,7 +280,7 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
     Route::delete('/leadership/{leadership_id}', [LeadershipController::class, 'destroy']);
     Route::get('/count/leadership', [LeadershipController::class, 'countLeadership'])->name('leadership.count');
 
-    // MCL Home
+    // ---- MCL Home ----
     Route::prefix('mcl-home')->group(function () {
         Route::get('/', [MclHomeController::class, 'index'])->name('mcl-home.index');
         Route::get('/sliders', [MclHomeController::class, 'mclhmeSlider'])->name('mcl-home.sliders');
@@ -295,7 +301,7 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
     });
     Route::get('/count/mcl-groups', [MclGroupController::class, 'countMclGroups'])->name('mcl-groups.count');
 
-    // Diversity Home
+    // ---- Diversity Home ----
     Route::prefix('diversity-home')->group(function () {
         Route::get('/', [DiversityHomeController::class, 'index']);
         Route::post('/', [DiversityHomeController::class, 'store']);
@@ -306,7 +312,7 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
         Route::get('/dropdown', [DiversityHomeController::class, 'getDropdownOptions']);
     });
 
-    // Pink 130
+    // ---- Pink 130 ----
     Route::prefix('pink-130')->group(function () {
         Route::get('/', [Pink130Controller::class, 'index'])->name('pink130.index');
         Route::get('/{pink_id}', [Pink130Controller::class, 'show'])->name('pink130.show');
@@ -325,7 +331,7 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
         Route::delete('/{ft_pink_id}', [Pink130HomeController::class, 'destroy']);
     });
 
-    // Services Homes
+    // ---- Services ----
     Route::prefix('services-homes')->group(function () {
         Route::get('/', [ServicesHomeController::class, 'index']);
         Route::get('/{services_home_id}', [ServicesHomeController::class, 'show']);
@@ -334,7 +340,6 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
         Route::delete('/{services_home_id}', [ServicesHomeController::class, 'destroy']);
     });
 
-    // Services
     Route::get('/services', [ServiceController::class, 'index']);
     Route::get('/services/{service_id}', [ServiceController::class, 'show']);
     Route::post('/services', [ServiceController::class, 'store']);
@@ -342,28 +347,22 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
     Route::delete('/services/{service_id}', [ServiceController::class, 'destroy']);
     Route::get('/count/services', [ServiceController::class, 'countServices'])->name('services.count');
 
-    // News Homes (sliders)
+    // ---- News ----
     Route::get('/news-homes', [NewsHomeController::class, 'index']);
     Route::get('/news-homes/{news_home_id}', [NewsHomeController::class, 'show']);
     Route::post('/news-homes', [NewsHomeController::class, 'store']);
     Route::post('/news-homes/{news_home_id}', [NewsHomeController::class, 'update']);
     Route::delete('/news-homes/{news_home_id}', [NewsHomeController::class, 'destroy']);
 
-    // ====== NEWS CONTENT BLOCK ROUTES ======
     Route::prefix('news')->group(function () {
-        // Public endpoints (already exposed outside auth group via controller __construct)
+        // Public endpoints are already exposed outside auth
         Route::get('/', [NewsController::class, 'index']);
-
-        // Protected CRUD
-        Route::post('/', [NewsController::class, 'store'])->middleware('auth:sanctum');
-        Route::post('/{news_id}/update', [NewsController::class, 'update'])->middleware('auth:sanctum');
-        Route::delete('/{news_id}', [NewsController::class, 'destroy'])->middleware('auth:sanctum');
-
-        // Extra: upload an image for a content block
-        Route::post('/upload-block-image', [NewsController::class, 'uploadBlockImage'])->middleware('auth:sanctum');
+        Route::post('/', [NewsController::class, 'store']);
+        Route::post('/{news_id}/update', [NewsController::class, 'update']);
+        Route::delete('/{news_id}', [NewsController::class, 'destroy']);
+        Route::post('/upload-block-image', [NewsController::class, 'uploadBlockImage']);
     });
     Route::get('/count/news', [NewsController::class, 'countNews'])->name('news.count');
-    // ====================================
 
     // Sub News
     Route::get('/sub-news', [SubNewsController::class, 'index']);
@@ -372,21 +371,36 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
     Route::post('/sub-news/{subNews}/update', [SubNewsController::class, 'update']);
     Route::delete('/sub-news/{subNews}', [SubNewsController::class, 'destroy']);
 
-    // Contact Homes
+    // ---- Events ----
+    // Admin/CRUD routes (protected)
+    Route::prefix('events')->group(function () {
+        Route::get('/', [EventController::class, 'index']);          // list all (admin)
+        Route::get('/latest', [EventController::class, 'latestEvent']); // optional admin latest
+        Route::get('/dropdown-data', [EventController::class, 'getDropdownData']);
+        Route::get('/count', [EventController::class, 'countEvents']);
+        Route::get('/{event_id}', [EventController::class, 'show']);  // single (admin detail)
+        Route::post('/', [EventController::class, 'store']);
+        Route::post('/{event_id}/update', [EventController::class, 'update']);
+        Route::delete('/{event_id}', [EventController::class, 'destroy']);
+    });
+
+    // ---- Contact ----
     Route::get('/contact-homes', [ContactHomeController::class, 'index']);
     Route::post('/contact-homes', [ContactHomeController::class, 'store']);
     Route::get('/contact-homes/{contactHome}', [ContactHomeController::class, 'show']);
     Route::post('/contact-homes/{contactHome}/update', [ContactHomeController::class, 'update']);
     Route::delete('/contact-homes/{contactHome}', [ContactHomeController::class, 'destroy']);
 
-    // Contact Us
     Route::get('/contact-us', [ContactUsController::class, 'index']);
     Route::get('/contact-us/{contactus_id}', [ContactUsController::class, 'show']);
     Route::post('/contact-us', [ContactUsController::class, 'store']);
     Route::post('/contact-us/{contactus_id}', [ContactUsController::class, 'update']);
     Route::delete('/contact-us/{contactus_id}', [ContactUsController::class, 'destroy']);
 
-    // Diversity (additional)
+    Route::apiResource('contact-info', ContactInfoController::class);
+    Route::get('/contact-us-dropdown', [ContactUsController::class, 'contactDropDown']);
+
+    // ---- Diversity (additional) ----
     Route::prefix('diversity')->group(function () {
         Route::get('/', [DiversityInclusionController::class, 'index']);
         Route::get('/latest', [DiversityInclusionController::class, 'latestdiversityinclusion']);
@@ -396,18 +410,13 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
         Route::delete('/{diversity_id}', [DiversityInclusionController::class, 'destroy']);
     });
 
-    // Contact Info
-    Route::apiResource('contact-info', ContactInfoController::class);
-    Route::get('/contact-us-dropdown', [ContactUsController::class, 'contactDropDown']);
-
-    // What We Do Homes
+    // ---- What We Do ----
     Route::get('/what-we-do-homes', [WhatWeDoHomeController::class, 'index']);
     Route::get('/what-we-do-homes/{what_we_do_id}', [WhatWeDoHomeController::class, 'show']);
     Route::post('/what-we-do-homes', [WhatWeDoHomeController::class, 'store']);
     Route::post('/what-we-do-homes/{what_we_do_id}', [WhatWeDoHomeController::class, 'update']);
     Route::delete('/what-we-do-homes/{what_we_do_id}', [WhatWeDoHomeController::class, 'destroy']);
 
-    // What We Do
     Route::get('/we-do', [WhatWeDoController::class, 'index']);
     Route::get('/we-do/{what_we_do_id}', [WhatWeDoController::class, 'show']);
     Route::post('/we-do', [WhatWeDoController::class, 'store']);
@@ -415,7 +424,6 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
     Route::delete('/we-do/{what_we_do_id}', [WhatWeDoController::class, 'destroy']);
     Route::get('/whatwedo/categories', [WhatWeDoController::class, 'fetchAllCategories']);
 
-    // Subcategories (What We Do)
     Route::prefix('subcategories')->group(function () {
         Route::get('/', [SubcategoryWeDoController::class, 'index']);
         Route::get('/{subcategoryWeDo}', [SubcategoryWeDoController::class, 'show']);
@@ -424,14 +432,13 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
         Route::delete('/{subcategoryWeDo}', [SubcategoryWeDoController::class, 'destroy']);
     });
 
-    // Blog Home Sliders
+    // ---- Blog ----
     Route::get('/blog-home-sliders', [BlogHomeController::class, 'index']);
     Route::get('/blog-home-sliders/{blog_home_id}', [BlogHomeController::class, 'show']);
     Route::post('/blog-home-sliders', [BlogHomeController::class, 'store']);
     Route::put('/blog-home-sliders/{blog_home_id}', [BlogHomeController::class, 'update']);
     Route::delete('/blog-home-sliders/{blog_home_id}', [BlogHomeController::class, 'destroy']);
 
-    // Blogs
     Route::get('/blogs', [BlogController::class, 'index']);
     Route::get('/blogs/latest', [BlogController::class, 'latestBlog']);
     Route::get('/blogs/{blog_id}', [BlogController::class, 'show']);
@@ -440,7 +447,6 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
     Route::delete('/blogs/{blog_id}', [BlogController::class, 'destroy']);
     Route::get('/blogs-dropdown', [BlogController::class, 'blogsDropDown']);
 
-    // Sub Blogs
     Route::get('/sub-blogs', [SubBlogController::class, 'index']);
     Route::get('/sub-blogs/latest', [SubBlogController::class, 'latestSubBlog']);
     Route::get('/sub-blogs/{sublog_id}', [SubBlogController::class, 'show']);
@@ -448,35 +454,33 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
     Route::post('/sub-blogs/{sublog_id}', [SubBlogController::class, 'update']);
     Route::delete('/sub-blogs/{sublog_id}', [SubBlogController::class, 'destroy']);
 
-    // Benefities Home
+    // ---- Benefits ----
     Route::get('/benefities-home', [BenefitiesHomeController::class, 'index']);
     Route::get('/benefities-home/{benefit_home_id}', [BenefitiesHomeController::class, 'show']);
     Route::post('/benefities-home', [BenefitiesHomeController::class, 'store']);
     Route::put('/benefities-home/{benefit_home_id}', [BenefitiesHomeController::class, 'update']);
     Route::delete('/benefities-home/{benefit_home_id}', [BenefitiesHomeController::class, 'destroy']);
 
-    // Benefits
     Route::get('/benefits', [BenefitsController::class, 'index']);
     Route::get('/benefits/{benefit_id}', [BenefitsController::class, 'show']);
     Route::post('/benefits', [BenefitsController::class, 'store']);
     Route::post('/benefits/{benefit_id}', [BenefitsController::class, 'update']);
     Route::delete('/benefits/{benefit_id}', [BenefitsController::class, 'destroy']);
 
-    // Values Home
+    // ---- Values ----
     Route::get('/values-home', [ValuesHomeController::class, 'index']);
     Route::get('/values-home/{values_home_id}', [ValuesHomeController::class, 'show']);
     Route::post('/values-home', [ValuesHomeController::class, 'store']);
     Route::put('/values-home/{values_home_id}', [ValuesHomeController::class, 'update']);
     Route::delete('/values-home/{values_home_id}', [ValuesHomeController::class, 'destroy']);
 
-    // Values
     Route::get('/values', [ValuesController::class, 'index']);
     Route::get('/values/{value_id}', [ValuesController::class, 'show']);
     Route::post('/values', [ValuesController::class, 'store']);
     Route::post('/values/{value_id}', [ValuesController::class, 'update']);
     Route::delete('/values/{value_id}', [ValuesController::class, 'destroy']);
 
-    // Stay Connected Home
+    // ---- Stay Connected ----
     Route::prefix('stay-connected-home')->group(function () {
         Route::get('/', [StayConnectedHomeController::class, 'index'])->name('stay-connected-home.index');
         Route::get('/{stay_connected_id}', [StayConnectedHomeController::class, 'show'])->name('stay-connected-home.show');
@@ -485,14 +489,13 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
         Route::delete('/{stay_connected_id}', [StayConnectedHomeController::class, 'destroy'])->name('stay-connected-home.destroy');
     });
 
-    // Stay Connected
     Route::get('/stay-connected', [StayConnectedController::class, 'index']);
     Route::get('/stay-connected/{stay_connected_id}', [StayConnectedController::class, 'show']);
     Route::post('/stay-connected', [StayConnectedController::class, 'store']);
     Route::post('/stay-connected/{stay_connected_id}', [StayConnectedController::class, 'update']);
     Route::delete('/stay-connected/{stay_connected_id}', [StayConnectedController::class, 'destroy']);
 
-    // Early Career Home
+    // ---- Early Career ----
     Route::prefix('earycare-home')->group(function () {
         Route::get('/', [EarycareHomeController::class, 'index'])->name('earycare-home.index');
         Route::get('/{earycare_id}', [EarycareHomeController::class, 'show'])->name('earycare-home.show');
@@ -501,26 +504,13 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
         Route::delete('/{earycare_id}', [EarycareHomeController::class, 'destroy'])->name('earycare-home.destroy');
     });
 
-    // Early Careers
     Route::get('/early-careers', [EarlyCareersController::class, 'index']);
     Route::get('/early-careers/{early_career_id}', [EarlyCareersController::class, 'show']);
     Route::post('/early-careers', [EarlyCareersController::class, 'store']);
     Route::post('/early-careers/{early_career_id}', [EarlyCareersController::class, 'update']);
     Route::delete('/early-careers/{early_career_id}', [EarlyCareersController::class, 'destroy']);
 
-    // Events
-    Route::prefix('events')->group(function () {
-        Route::get('/', [EventController::class, 'index']);
-        Route::get('/latest', [EventController::class, 'latestEvent']);
-        Route::get('/dropdown-data', [EventController::class, 'getDropdownData']);
-        Route::get('/count', [EventController::class, 'countEvents']);
-        Route::get('/{event_id}', [EventController::class, 'show']);
-        Route::post('/', [EventController::class, 'store']);
-        Route::post('/{event_id}/update', [EventController::class, 'update']);
-        Route::delete('/{event_id}', [EventController::class, 'destroy']);
-    });
-
-    // Sub Events
+    // ---- Sub Events (admin) ----
     Route::prefix('sub-events')->group(function () {
         Route::get('/', [SubEventController::class, 'index']);
         Route::get('/count', [SubEventController::class, 'countEvents']);
@@ -531,11 +521,12 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
         Route::delete('/{event_id}', [SubEventController::class, 'destroy']);
     });
 
-    // Subscriptions
+    // ---- Subscriptions ----
     Route::apiResource('subscriptions', SubscriptionController::class);
     Route::post('subscriptions/{subscription_id}/update', [SubscriptionController::class, 'update']);
 
-    // Brands
+    // ---- Brands ----
     Route::resource('brands', BrandController::class);
     Route::post('/edit/brand/{brand_id}', [BrandController::class, 'update']);
+
 });

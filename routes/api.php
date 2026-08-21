@@ -125,6 +125,8 @@ Route::get('/all/sub-events', [SubEventController::class, 'allEvents']);
 Route::get('/allsubscriptions', [SubscriptionController::class, 'allsubscriptions']);
 Route::get('/latestbrand', [BrandController::class, 'latestbrand']);
 Route::get('/readmore-news/{news_id}', [NewsController::class, 'newsByid']);
+Route::get('/news/{news_id}', [NewsController::class, 'show']);
+
 
 // ***** REMOVED obsolete news routes *****
 // Route::get('/news/category/{category}', [NewsController::class, 'getByCategory']);
@@ -351,7 +353,6 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
     Route::prefix('news')->group(function () {
         // Public endpoints (already exposed outside auth group via controller __construct)
         Route::get('/', [NewsController::class, 'index']);
-        Route::get('/{news_id}', [NewsController::class, 'show']);
 
         // Protected CRUD
         Route::post('/', [NewsController::class, 'store'])->middleware('auth:sanctum');

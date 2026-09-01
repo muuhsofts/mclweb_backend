@@ -1,4 +1,5 @@
 <?php
+// app/Http/Controllers/NewsController.php
 
 namespace App\Http\Controllers;
 
@@ -15,11 +16,22 @@ class NewsController extends Controller
     public function __construct()
     {
         $this->middleware('auth:sanctum')->except([
-            'index', 'show', 'latestnew', 'allNews', 'newsByid', 'countNews'
+            'index', 'show', 'latestnew', 'allNews', 'newsByid', 'countNews', 'downloadPdf'
         ]);
     }
 
     private function uploadImage($file, $directory = 'uploads/featured')
+    {
+        $path = public_path($directory);
+        if (!File::exists($path)) {
+            File::makeDirectory($path, 0755, true);
+        }
+        $name = time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $file->getClientOriginalName());
+        $file->move($path, $name);
+        return $directory . '/' . $name;
+    }
+
+    private function uploadPdf($file, $directory = 'uploads/pdfs')
     {
         $path = public_path($directory);
         if (!File::exists($path)) {
@@ -98,6 +110,26 @@ class NewsController extends Controller
         }
     }
 
+    // ---------- PDF DOWNLOAD ----------
+    public function downloadPdf($news_id)
+    {
+        try {
+            $news = News::find($news_id);
+            if (!$news) {
+                return response()->json(['message' => 'News not found'], 404);
+            }
+
+            if (!$news->pdf_file || !File::exists(public_path($news->pdf_file))) {
+                return response()->json(['message' => 'PDF file not found'], 404);
+            }
+
+            return response()->download(public_path($news->pdf_file));
+        } catch (Exception $e) {
+            Log::error('Error downloading PDF: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to download PDF.'], 500);
+        }
+    }
+
     // ---------- PROTECTED ----------
 
     public function store(Request $request)
@@ -105,6 +137,7 @@ class NewsController extends Controller
         $validator = Validator::make($request->all(), [
             'title'          => 'required|string|max:255',
             'featured_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:5120',
+            'pdf_file'       => 'nullable|file|mimes:pdf|max:10240',
             'status'         => 'nullable|in:draft,published',
             'published_at'   => 'nullable|date',
             'blocks'         => 'nullable|json',
@@ -118,6 +151,10 @@ class NewsController extends Controller
 
         if ($request->hasFile('featured_image')) {
             $data['featured_image'] = $this->uploadImage($request->file('featured_image'), 'uploads/featured');
+        }
+
+        if ($request->hasFile('pdf_file')) {
+            $data['pdf_file'] = $this->uploadPdf($request->file('pdf_file'), 'uploads/pdfs');
         }
 
         if (isset($data['status']) && $data['status'] === 'published' && empty($data['published_at'])) {
@@ -153,9 +190,11 @@ class NewsController extends Controller
             $validator = Validator::make($request->all(), [
                 'title'           => 'sometimes|required|string|max:255',
                 'featured_image'  => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:5120',
+                'pdf_file'        => 'nullable|file|mimes:pdf|max:10240',
                 'status'          => 'nullable|in:draft,published',
                 'published_at'    => 'nullable|date',
                 'remove_featured' => 'nullable|boolean',
+                'remove_pdf'      => 'nullable|boolean',
                 'blocks'          => 'nullable|json',
             ]);
 
@@ -166,6 +205,7 @@ class NewsController extends Controller
             $data = $validator->validated();
             unset($data['blocks']);
 
+            // Handle featured image removal
             if ($request->boolean('remove_featured') && $news->featured_image) {
                 if (File::exists(public_path($news->featured_image))) {
                     File::delete(public_path($news->featured_image));
@@ -173,11 +213,28 @@ class NewsController extends Controller
                 $data['featured_image'] = null;
             }
 
+            // Handle PDF removal
+            if ($request->boolean('remove_pdf') && $news->pdf_file) {
+                if (File::exists(public_path($news->pdf_file))) {
+                    File::delete(public_path($news->pdf_file));
+                }
+                $data['pdf_file'] = null;
+            }
+
+            // Upload new featured image
             if ($request->hasFile('featured_image')) {
                 if ($news->featured_image && File::exists(public_path($news->featured_image))) {
                     File::delete(public_path($news->featured_image));
                 }
                 $data['featured_image'] = $this->uploadImage($request->file('featured_image'), 'uploads/featured');
+            }
+
+            // Upload new PDF
+            if ($request->hasFile('pdf_file')) {
+                if ($news->pdf_file && File::exists(public_path($news->pdf_file))) {
+                    File::delete(public_path($news->pdf_file));
+                }
+                $data['pdf_file'] = $this->uploadPdf($request->file('pdf_file'), 'uploads/pdfs');
             }
 
             if (isset($data['status']) && $data['status'] === 'published' && empty($data['published_at'])) {
@@ -295,10 +352,17 @@ class NewsController extends Controller
                 return response()->json(['message' => 'News not found'], 404);
             }
 
+            // Delete featured image
             if ($news->featured_image && File::exists(public_path($news->featured_image))) {
                 File::delete(public_path($news->featured_image));
             }
 
+            // Delete PDF file
+            if ($news->pdf_file && File::exists(public_path($news->pdf_file))) {
+                File::delete(public_path($news->pdf_file));
+            }
+
+            // Delete content blocks and their files
             foreach ($news->contentBlocks as $block) {
                 $this->deleteBlockFiles($block);
             }

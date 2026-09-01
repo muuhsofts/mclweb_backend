@@ -137,6 +137,7 @@ Route::get('/latestbrand', [BrandController::class, 'latestbrand']);
 // News detail (public)
 Route::get('/readmore-news/{news_id}', [NewsController::class, 'newsByid']);
 Route::get('/news/{news_id}', [NewsController::class, 'show']);
+Route::get('/news/{news_id}/download-pdf', [NewsController::class, 'downloadPdf']);
 
 
 // ============================================================

@@ -1,4 +1,5 @@
 <?php
+// app/Models/News.php
 
 namespace App\Models;
 
@@ -16,6 +17,7 @@ class News extends Model
         'title',
         'slug',
         'featured_image',
+        'pdf_file',
         'status',
         'published_at',
     ];
@@ -50,5 +52,10 @@ class News extends Model
     public function getFeaturedImageUrlAttribute(): ?string
     {
         return $this->featured_image ? asset($this->featured_image) : null;
+    }
+
+    public function getPdfFileUrlAttribute(): ?string
+    {
+        return $this->pdf_file ? asset($this->pdf_file) : null;
     }
 }

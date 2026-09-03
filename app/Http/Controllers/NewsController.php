@@ -70,18 +70,33 @@ class NewsController extends Controller
     }
 
     public function latestnew()
-    {
-        try {
-            $news = News::with('contentBlocks')->orderBy('created_at', 'desc')->first();
-            if (!$news) {
-                return response()->json(['message' => 'No news found'], 404);
-            }
-            return response()->json(['news' => $news], 200);
-        } catch (Exception $e) {
-            Log::error('Error fetching latest news: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch latest news.'], 500);
+{
+    try {
+        $news = News::with('contentBlocks')
+            ->where('status', '!=', 'draft')
+            ->orderBy('created_at', 'desc')
+            ->first();
+
+        if (!$news) {
+            return response()->json([
+                'message' => 'No published news found'
+            ], 404);
         }
+
+        return response()->json([
+            'news' => $news
+        ], 200);
+
+    } catch (Exception $e) {
+        Log::error('Error fetching latest news: ' . $e->getMessage());
+
+        return response()->json([
+            'error' => 'Failed to fetch latest news.'
+        ], 500);
     }
+}
+
+
 
     public function allNews()
     {

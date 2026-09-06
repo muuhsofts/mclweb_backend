@@ -99,15 +99,19 @@ class NewsController extends Controller
 
 
     public function allNews()
-    {
-        try {
-            $news = News::with('contentBlocks')->orderBy('news_id', 'asc')->get();
-            return response()->json(['news' => $news], 200);
-        } catch (Exception $e) {
-            Log::error('Error fetching all news (asc): ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch news.'], 500);
-        }
+{
+    try {
+        $news = News::where('status', 'published')
+            ->select('news_id', 'title', 'slug', 'featured_image', 'created_at')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json(['news' => $news], 200);
+    } catch (Exception $e) {
+        Log::error('Error fetching optimized news: ' . $e->getMessage());
+        return response()->json(['error' => 'Failed to fetch news.'], 500);
     }
+}
 
     public function newsByid($news_id)
     {

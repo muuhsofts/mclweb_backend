@@ -20,7 +20,7 @@ class EventController extends Controller
     }
 
     // ============================================================
-    // PUBLIC
+    // PUBLIC (same pattern as News)
     // ============================================================
 
     public function index()
@@ -42,7 +42,6 @@ class EventController extends Controller
                 ->first();
 
             if (!$event) {
-                Log::info("Event not found for event_id={$event_id}");
                 return response()->json(['message' => 'Event not found'], 404);
             }
 
@@ -83,10 +82,6 @@ class EventController extends Controller
         }, 'Failed to count events.');
     }
 
-    /**
-     * Lightweight list for admin dropdowns: id + title only.
-     * (Route existed in api.php but was missing from the controller.)
-     */
     public function getDropdownData()
     {
         return $this->safeCall(function () {
@@ -98,7 +93,7 @@ class EventController extends Controller
     }
 
     // ============================================================
-    // PROTECTED
+    // PROTECTED (same upload / remove / blocks pattern as News)
     // ============================================================
 
     public function store(Request $request)
@@ -137,7 +132,7 @@ class EventController extends Controller
                 $this->syncBlocks($event, $blocks, $request);
             }
 
-            Log::info('Event created', ['event_id' => $event->event_id, 'blocks' => count($blocks ?? [])]);
+            Log::info('Event created', ['event_id' => $event->event_id]);
 
             return response()->json([
                 'message' => 'Event created successfully',
@@ -168,13 +163,15 @@ class EventController extends Controller
 
         return $this->safeCall(function () use ($request, $event, $validator) {
             $data = $validator->validated();
-            unset($data['blocks']);
+            unset($data['blocks'], $data['remove_featured']);
 
+            // Remove featured image (same as News)
             if ($request->boolean('remove_featured') && $event->featured_image) {
                 $this->deleteStoredFile($event->featured_image);
                 $data['featured_image'] = null;
             }
 
+            // Upload new featured image
             if ($request->hasFile('featured_image')) {
                 if ($event->featured_image) {
                     $this->deleteStoredFile($event->featured_image);
@@ -191,6 +188,7 @@ class EventController extends Controller
 
             $event->fill($data)->save();
 
+            // Sync blocks exactly like News
             $blocks = json_decode($request->input('blocks', '[]'), true);
             if (is_array($blocks)) {
                 $this->syncBlocks($event, $blocks, $request);
@@ -230,19 +228,17 @@ class EventController extends Controller
     }
 
     // ============================================================
-    // INTERNAL HELPERS
+    // HELPERS (identical pattern to News)
     // ============================================================
 
-    /**
-     * Runs $callback, converting any exception into a consistent
-     * JSON error response and logging the trace.
-     */
     private function safeCall(callable $callback, string $errorMessage)
     {
         try {
             return $callback();
         } catch (Exception $e) {
-            Log::error($errorMessage . ' ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            Log::error($errorMessage . ' ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
             return response()->json([
                 'error'  => $errorMessage,
                 'detail' => $e->getMessage(),
@@ -272,6 +268,7 @@ class EventController extends Controller
 
     private function syncBlocks(Event $event, array $blocks, Request $request): void
     {
+        // Delete old blocks + files
         foreach ($event->contentBlocks as $block) {
             $this->deleteBlockFiles($block);
             $block->delete();
@@ -283,6 +280,7 @@ class EventController extends Controller
         foreach ($blocks as $index => $blockData) {
             $imagePaths = [];
 
+            // New uploaded files
             $files = $allBlockImages[$index] ?? [];
             if (!is_array($files)) {
                 $files = $files ? [$files] : [];
@@ -293,6 +291,7 @@ class EventController extends Controller
                 }
             }
 
+            // Keep existing paths
             if (!empty($blockData['image_paths']) && is_array($blockData['image_paths'])) {
                 foreach ($blockData['image_paths'] as $path) {
                     if ($path && is_string($path)) {
@@ -301,6 +300,7 @@ class EventController extends Controller
                 }
             }
 
+            // Legacy single path support
             if (empty($imagePaths) && !empty($blockData['image_path'])) {
                 $imagePaths[] = $blockData['image_path'];
             }
@@ -326,7 +326,6 @@ class EventController extends Controller
                 $this->deleteStoredFile($path);
             }
         }
-
         if (!empty($block->image_path)) {
             $this->deleteStoredFile($block->image_path);
         }

@@ -65,12 +65,12 @@ class EventController extends Controller
     }, 'Failed to fetch latest event.');
 }
 
-public function allEvents()
+ public function allEvents()
 {
     return $this->safeCall(function () {
-        $events = Event::with('contentBlocks')
-            ->where('status', 'published')   // ← no draft
-            ->orderBy('event_id', 'asc')
+        $events = Event::where('status', 'published')
+            ->select('event_id', 'title', 'slug', 'featured_image', 'created_at')
+            ->orderBy('created_at', 'desc')
             ->get();
 
         return response()->json(['events' => $events], 200);

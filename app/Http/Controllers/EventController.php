@@ -20,13 +20,14 @@ class EventController extends Controller
     }
 
     // ============================================================
-    // PUBLIC (same pattern as News)
+    // PUBLIC  →  only published (never draft)
     // ============================================================
 
     public function index()
     {
         return $this->safeCall(function () {
             $events = Event::with('contentBlocks')
+                ->where('status', 'published')
                 ->orderBy('event_id', 'desc')
                 ->get();
 
@@ -39,6 +40,7 @@ class EventController extends Controller
         return $this->safeCall(function () use ($event_id) {
             $event = Event::with('contentBlocks')
                 ->where('event_id', (int) $event_id)
+                ->where('status', 'published')          // ← no draft
                 ->first();
 
             if (!$event) {
@@ -53,6 +55,7 @@ class EventController extends Controller
     {
         return $this->safeCall(function () {
             $event = Event::with('contentBlocks')
+                ->where('status', 'published')          // ← no draft
                 ->orderBy('created_at', 'desc')
                 ->first();
 
@@ -68,6 +71,7 @@ class EventController extends Controller
     {
         return $this->safeCall(function () {
             $events = Event::with('contentBlocks')
+                ->where('status', 'published')          // ← no draft
                 ->orderBy('event_id', 'asc')
                 ->get();
 
@@ -78,23 +82,39 @@ class EventController extends Controller
     public function countEvents()
     {
         return $this->safeCall(function () {
-            return response()->json(['count_events' => Event::count()], 200);
+            $count = Event::where('status', 'published')->count();
+
+            return response()->json(['count_events' => $count], 200);
         }, 'Failed to count events.');
     }
+
+    // ============================================================
+    // PROTECTED  →  admin can see drafts
+    // ============================================================
 
     public function getDropdownData()
     {
         return $this->safeCall(function () {
             $events = Event::orderBy('event_id', 'desc')
-                ->get(['event_id', 'title']);
+                ->get(['event_id', 'title', 'status']);
 
             return response()->json(['events' => $events], 200);
         }, 'Failed to fetch event dropdown data.');
     }
 
-    // ============================================================
-    // PROTECTED (same upload / remove / blocks pattern as News)
-    // ============================================================
+    /**
+     * Admin list – returns both draft + published
+     */
+    public function adminIndex()
+    {
+        return $this->safeCall(function () {
+            $events = Event::with('contentBlocks')
+                ->orderBy('event_id', 'desc')
+                ->get();
+
+            return response()->json(['events' => $events], 200);
+        }, 'Failed to fetch events (admin).');
+    }
 
     public function store(Request $request)
     {
@@ -114,6 +134,11 @@ class EventController extends Controller
             $data = $validator->validated();
             unset($data['blocks']);
 
+            // Default status
+            if (empty($data['status'])) {
+                $data['status'] = 'draft';
+            }
+
             if ($request->hasFile('featured_image')) {
                 $data['featured_image'] = $this->uploadFile(
                     $request->file('featured_image'),
@@ -121,6 +146,7 @@ class EventController extends Controller
                 );
             }
 
+            // Auto set published_at only when publishing
             if (($data['status'] ?? null) === 'published' && empty($data['published_at'])) {
                 $data['published_at'] = now();
             }
@@ -132,7 +158,10 @@ class EventController extends Controller
                 $this->syncBlocks($event, $blocks, $request);
             }
 
-            Log::info('Event created', ['event_id' => $event->event_id]);
+            Log::info('Event created', [
+                'event_id' => $event->event_id,
+                'status'   => $event->status,
+            ]);
 
             return response()->json([
                 'message' => 'Event created successfully',
@@ -165,7 +194,7 @@ class EventController extends Controller
             $data = $validator->validated();
             unset($data['blocks'], $data['remove_featured']);
 
-            // Remove featured image (same as News)
+            // Remove featured image
             if ($request->boolean('remove_featured') && $event->featured_image) {
                 $this->deleteStoredFile($event->featured_image);
                 $data['featured_image'] = null;
@@ -182,19 +211,23 @@ class EventController extends Controller
                 );
             }
 
+            // Auto set published_at only when changing to published
             if (($data['status'] ?? null) === 'published' && empty($data['published_at'])) {
                 $data['published_at'] = now();
             }
 
             $event->fill($data)->save();
 
-            // Sync blocks exactly like News
+            // Sync blocks
             $blocks = json_decode($request->input('blocks', '[]'), true);
             if (is_array($blocks)) {
                 $this->syncBlocks($event, $blocks, $request);
             }
 
-            Log::info('Event updated', ['event_id' => $event->event_id]);
+            Log::info('Event updated', [
+                'event_id' => $event->event_id,
+                'status'   => $event->status,
+            ]);
 
             return response()->json([
                 'message' => 'Event updated successfully',
@@ -228,7 +261,7 @@ class EventController extends Controller
     }
 
     // ============================================================
-    // HELPERS (identical pattern to News)
+    // HELPERS
     // ============================================================
 
     private function safeCall(callable $callback, string $errorMessage)
@@ -237,7 +270,7 @@ class EventController extends Controller
             return $callback();
         } catch (Exception $e) {
             Log::error($errorMessage . ' ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
             return response()->json([
                 'error'  => $errorMessage,

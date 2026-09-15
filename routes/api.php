@@ -54,6 +54,7 @@ use App\Http\Controllers\EventController;
 use App\Http\Controllers\AboutMwananchiController;
 use App\Http\Controllers\SubEventController;
 use App\Http\Controllers\SubscriptionController;
+use App\Http\Controllers\RateCardController;
 
 // ============================================================
 // PUBLIC ROUTES (no authentication required)
@@ -173,6 +174,12 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
     Route::post('/companies', [CompanyController::class, 'store']);
     Route::post('/companies/{company_id}', [CompanyController::class, 'update']);
     Route::delete('/companies/{company_id}', [CompanyController::class, 'destroy']);
+
+    // ---- Rate Cards (admin) ----
+    Route::post('/rate-cards', [RateCardController::class, 'store']);
+    Route::post('/rate-cards/{rate_card_id}/update', [RateCardController::class, 'update']);
+    Route::put('/rate-cards/{rate_card_id}', [RateCardController::class, 'update']);
+    Route::delete('/rate-cards/{rate_card_id}', [RateCardController::class, 'destroy']);
 
     // ---- Galleries ----
     Route::post('/galleries', [GalleryController::class, 'store']);

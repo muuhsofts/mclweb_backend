@@ -51,6 +51,26 @@ class RateCardController extends Controller
     }
 
     /**
+ * Get the latest rate card (public).
+ * Returns the most recent rate card by rate_card_id.
+ */
+public function latest()
+{
+    $rateCard = RateCard::orderBy('rate_card_id', 'desc')->first();
+
+    if (!$rateCard) {
+        return response()->json([
+            'message' => 'No rate cards available.',
+            'rate_card' => null,
+        ], Response::HTTP_OK);
+    }
+
+    return response()->json([
+        'rate_card' => $rateCard,
+    ], Response::HTTP_OK);
+}
+
+    /**
      * Store a newly created rate card.
      */
     public function store(Request $request)

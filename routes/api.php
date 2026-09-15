@@ -141,10 +141,19 @@ Route::get('/news/{news_id}', [NewsController::class, 'show']);
 Route::get('/news/{news_id}/download-pdf', [NewsController::class, 'downloadPdf']);
 
 // ============================================================
-// RATE CARDS - PUBLIC ROUTES (list, show, download)
+// RATE CARDS - PUBLIC ROUTES (latest, list, show, download)
 // ============================================================
+
+// Latest rate card (single, for footer / hero CTA) — MUST come first!
+Route::get('/rate-cards/latest', [RateCardController::class, 'latest']);
+
+// List all
 Route::get('/rate-cards', [RateCardController::class, 'index']);
+
+// Show one
 Route::get('/rate-cards/{rate_card_id}', [RateCardController::class, 'show']);
+
+// Download
 Route::get('/rate-cards/{rate_card_id}/download', [RateCardController::class, 'download']);
 
 
@@ -374,7 +383,6 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
     Route::delete('/news-homes/{news_home_id}', [NewsHomeController::class, 'destroy']);
 
     Route::prefix('news')->group(function () {
-        // Public endpoints are already exposed outside auth
         Route::get('/', [NewsController::class, 'index']);
         Route::post('/', [NewsController::class, 'store']);
         Route::post('/{news_id}/update', [NewsController::class, 'update']);
@@ -391,9 +399,8 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
     Route::delete('/sub-news/{subNews}', [SubNewsController::class, 'destroy']);
 
     // ---- Events ----
-    // Admin/CRUD routes (protected)
     Route::prefix('events')->group(function () {
-        Route::get('/', [EventController::class, 'index']);          // admin list
+        Route::get('/', [EventController::class, 'index']);
         Route::get('/latest', [EventController::class, 'latestEvent']);
         Route::get('/dropdown-data', [EventController::class, 'getDropdownData']);
         Route::get('/count', [EventController::class, 'countEvents']);

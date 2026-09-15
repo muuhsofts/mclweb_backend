@@ -128,7 +128,7 @@ Route::get('/latestService', [ServicesHomeController::class, 'latestService']);
 Route::get('/all-events', [EventController::class, 'allEvents']);
 Route::get('/latestEvent', [EventController::class, 'latestEvent']);
 Route::get('/events/{event_id}', [EventController::class, 'show']);   // plural
-Route::get('/event/{event_id}', [EventController::class, 'show']);    // singular (fallbac
+Route::get('/event/{event_id}', [EventController::class, 'show']);    // singular (fallback)
 
 Route::get('/about-mwananchi/all', [AboutMwananchiController::class, 'allRecords']);
 Route::get('/all/sub-events', [SubEventController::class, 'allEvents']);
@@ -139,6 +139,13 @@ Route::get('/latestbrand', [BrandController::class, 'latestbrand']);
 Route::get('/readmore-news/{news_id}', [NewsController::class, 'newsByid']);
 Route::get('/news/{news_id}', [NewsController::class, 'show']);
 Route::get('/news/{news_id}/download-pdf', [NewsController::class, 'downloadPdf']);
+
+// ============================================================
+// RATE CARDS - PUBLIC ROUTES (list, show, download)
+// ============================================================
+Route::get('/rate-cards', [RateCardController::class, 'index']);
+Route::get('/rate-cards/{rate_card_id}', [RateCardController::class, 'show']);
+Route::get('/rate-cards/{rate_card_id}/download', [RateCardController::class, 'download']);
 
 
 // ============================================================
@@ -175,7 +182,7 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
     Route::post('/companies/{company_id}', [CompanyController::class, 'update']);
     Route::delete('/companies/{company_id}', [CompanyController::class, 'destroy']);
 
-    // ---- Rate Cards (admin) ----
+    // ---- Rate Cards (admin: create, update, delete) ----
     Route::post('/rate-cards', [RateCardController::class, 'store']);
     Route::post('/rate-cards/{rate_card_id}/update', [RateCardController::class, 'update']);
     Route::put('/rate-cards/{rate_card_id}', [RateCardController::class, 'update']);
@@ -386,14 +393,13 @@ Route::middleware(['auth:sanctum', 'token.expiration'])->group(function () {
     // ---- Events ----
     // Admin/CRUD routes (protected)
     Route::prefix('events')->group(function () {
-    
-    Route::get('/', [EventController::class, 'index']);          // admin list
-    Route::get('/latest', [EventController::class, 'latestEvent']);
-    Route::get('/dropdown-data', [EventController::class, 'getDropdownData']);
-    Route::get('/count', [EventController::class, 'countEvents']);
-    Route::post('/', [EventController::class, 'store']);
-    Route::post('/{event_id}/update', [EventController::class, 'update']);
-    Route::delete('/{event_id}', [EventController::class, 'destroy']);
+        Route::get('/', [EventController::class, 'index']);          // admin list
+        Route::get('/latest', [EventController::class, 'latestEvent']);
+        Route::get('/dropdown-data', [EventController::class, 'getDropdownData']);
+        Route::get('/count', [EventController::class, 'countEvents']);
+        Route::post('/', [EventController::class, 'store']);
+        Route::post('/{event_id}/update', [EventController::class, 'update']);
+        Route::delete('/{event_id}', [EventController::class, 'destroy']);
     });
 
     // ---- Contact ----
